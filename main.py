@@ -274,11 +274,12 @@ def main():
     scheduler.start()
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler('start', start))
-    app.add_handler(MessageHandler(filters.Regex("^Добавить город$"), add_city))
-    app.add_handler(MessageHandler(filters.Regex("^Удалить город$"), remove_city))
-    app.add_handler(MessageHandler(filters.Regex("^Установить время$"), set_time))
-    app.add_handler(MessageHandler(filters.Regex("^Показать погоду$"), weather))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^Добавить город$|^Удалить город$|^Показать погоду$|^Установить время$"), city_handler))
+    app.add_handler(MessageHandler(filters.Regex("^Добавить город"), add_city))
+    app.add_handler(MessageHandler(filters.Regex("^Удалить город"), remove_city))
+    app.add_handler(MessageHandler(filters.Regex("^Установить время"), set_time))
+    app.add_handler(MessageHandler(filters.Regex("^Показать погоду"), weather))
+    # Ловим все текстовые сообщения, чтобы режимы add/remove/time работали корректно
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, city_handler))
     app.run_polling()
 
 if __name__ == '__main__':
