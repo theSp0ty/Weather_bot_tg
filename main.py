@@ -1,3 +1,4 @@
+
 import logging
 import os
 import random
@@ -8,11 +9,17 @@ from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, Bot
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from apscheduler.schedulers.background import BackgroundScheduler
 
+from dotenv import load_dotenv
+load_dotenv()
+
 USER_DATA_FILE = 'users.json'
 user_states = {}
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 OPENWEATHER_API_KEY = os.getenv('OPENWEATHER_API_KEY')
 TIMEZONEDB_API_KEY = os.getenv('TIMEZONEDB_API_KEY')
+
+# Для отладки, можно временно включить:
+print("TELEGRAM_TOKEN:", TELEGRAM_TOKEN)
 
 def save_user_states():
     global user_states
