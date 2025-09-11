@@ -211,7 +211,7 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chosen_city = ""
         city_buttons = [[KeyboardButton(c)] for c in state["cities"]]
         city_buttons.append([KeyboardButton('➕ Добавить город')])
-        if chosen_city == '➕ Добавить город':
+        if chosen_city.strip().lower() == '➕ добавить город'.lower():
             state["add_mode"] = True
             state["choose_city_mode"] = False
             await update.message.reply_text("Введите название города для добавления:")
