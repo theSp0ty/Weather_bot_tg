@@ -247,9 +247,9 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"Город {city} не найден в вашем списке. Выберите город из списка или добавьте новый.", reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]] + [[KeyboardButton('➕ Добавить город')]], resize_keyboard=True))
             save_user_states()
         return
-        elif state.get("remove_mode"):
-            # TODO: Реализовать удаление города
-            pass
+    elif state.get("remove_mode"):
+        # TODO: Реализовать удаление города
+        pass
     # --- ОБРАБОТКА ВЫБОРА ВРЕМЕНИ ---
     if state.get("choose_time_mode"):
         time_text = update.message.text
