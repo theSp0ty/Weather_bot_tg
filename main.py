@@ -139,6 +139,9 @@ async def add_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if user_id not in user_states:
         user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
+    # Сохраняем режим добавления города только для текущего пользователя
+    for uid in user_states:
+        user_states[uid]["add_mode"] = False
     user_states[user_id]["add_mode"] = True
     user_states[user_id]["remove_mode"] = False
     user_states[user_id]["time_mode"] = False
