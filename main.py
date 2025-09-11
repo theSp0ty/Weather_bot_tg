@@ -1,4 +1,5 @@
 
+
 import logging
 import os
 import random
@@ -8,6 +9,9 @@ import json
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, Bot
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from apscheduler.schedulers.background import BackgroundScheduler
+
+from dotenv import load_dotenv
+load_dotenv()
 
 from dotenv import load_dotenv
 load_dotenv()
