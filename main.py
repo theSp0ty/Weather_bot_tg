@@ -179,19 +179,21 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
     state = user_states[user_id]
     city = update.message.text.strip()
-    # Привести к виду: первая буква заглавная, остальные строчные
+    # Привести к виду: первая буква заглавная, остальные строчные, но для сложных названий использовать title()
     if city:
-        city = city.lower().capitalize()
+        city = city.title()
     if state.get("add_mode"):
         state["add_mode"] = False
-        if city not in state["cities"]:
+        # Проверяем наличие города без учёта регистра
+        cities_lower = [c.lower() for c in state["cities"]]
+        if city.lower() not in cities_lower:
             state["cities"].append(city)
             timezone = await get_timezone_by_city(city)
             state["timezone"] = timezone
-            await update.message.reply_text(f"Город {city} добавлен! Часовой пояс: {timezone if timezone else 'не найден'}.", reply_markup=main_keyboard)
+            await update.message.reply_text(f"✅ Город {city} добавлен! Часовой пояс: {timezone if timezone else 'не найден'}.", reply_markup=main_keyboard)
             save_user_states()
         else:
-            await update.message.reply_text(f"Город {city} уже есть в вашем списке.", reply_markup=main_keyboard)
+            await update.message.reply_text(f"⚠️ Город {city} уже есть в вашем списке.", reply_markup=main_keyboard)
         return
     if state.get("remove_mode"):
         state["remove_mode"] = False
