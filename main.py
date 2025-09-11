@@ -193,7 +193,11 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             state["cities"].append(city)
             timezone = await get_timezone_by_city(city)
             state["timezone"] = timezone
-            await update.message.reply_text(f"✅ Город {city} добавлен! Часовой пояс: {timezone if timezone else 'не найден'}.", reply_markup=main_keyboard)
+            # После добавления города предлагаем выбрать его для уведомлений
+            state["notify_city"] = city
+            await update.message.reply_text(
+                f"✅ Город {city} добавлен! Часовой пояс: {timezone if timezone else 'не найден'}.\n\nЭтот город будет использоваться для ежедневных уведомлений о погоде. Если хотите выбрать другой город — используйте команду 'Показать погоду 🌦️' и выберите нужный город.",
+                reply_markup=main_keyboard)
             save_user_states()
         else:
             await update.message.reply_text(f"⚠️ Город {city} уже есть в вашем списке.", reply_markup=main_keyboard)
@@ -240,25 +244,74 @@ async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not cities:
         await update.message.reply_text("Сначала добавьте хотя бы один город.", reply_markup=main_keyboard)
         return
-    result = []
-    for city in cities:
-        weather_text = await get_weather(city)
-        result.append(weather_text)
+    # Если город для уведомлений не выбран, предлагаем выбрать
+    notify_city = state.get("notify_city")
+    if not notify_city or notify_city not in cities:
+        # Предлагаем выбрать город
+        await update.message.reply_text(
+            "Выберите город для прогноза:",
+            reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in cities], resize_keyboard=True)
+        )
+        state["choose_city_mode"] = True
+        return
+    # Краткий прогноз на день для выбранного города
+    weather_text = await get_weather_brief(notify_city)
     wish = get_wish()
-    await update.message.reply_text("\n".join(result) + f"\n{wish}", reply_markup=main_keyboard)
+    await update.message.reply_text(f"{weather_text}\n{wish}", reply_markup=main_keyboard)
+    # Если пользователь выбирает город для прогноза
+    if state.get("choose_city_mode"):
+        chosen_city = city.title()
+        if chosen_city in state["cities"]:
+            state["notify_city"] = chosen_city
+            state["choose_city_mode"] = False
+            await update.message.reply_text(f"✅ Город {chosen_city} выбран для ежедневных уведомлений.", reply_markup=main_keyboard)
+            save_user_states()
+        else:
+            await update.message.reply_text(f"⚠️ Город {chosen_city} не найден в вашем списке.", reply_markup=main_keyboard)
+        return
+async def get_weather_brief(city):
+    # Краткий прогноз на день
+    try:
+        translate_url = "https://libretranslate.de/translate"
+        payload = {
+            "q": city,
+            "source": "ru",
+            "target": "en",
+            "format": "text"
+        }
+        resp = requests.post(translate_url, json=payload, timeout=5)
+        if resp.status_code == 200:
+            city_en = resp.json().get("translatedText", city)
+        else:
+            city_en = city
+    except Exception:
+        city_en = city
+    url = f"https://api.openweathermap.org/data/2.5/weather?q={city_en}&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru"
+    try:
+        response = requests.get(url)
+        data = response.json()
+        if data.get('cod') != 200:
+            return f"Не удалось получить погоду для {city}."
+        temp = data['main']['temp']
+        desc = data['weather'][0]['description']
+        wind = data['wind']['speed']
+        humidity = data['main']['humidity']
+        return f"{city}: {desc}, {temp}°C, ветер {wind} м/с, влажность {humidity}%"
+    except Exception as e:
+        return f"Ошибка: {e}"
 
 async def send_weather_job(user_id):
     state = user_states.get(user_id)
     if not state or not state.get("cities"):
         return
-    result = []
-    for city in state["cities"]:
-        weather_text = await get_weather(city)
-        result.append(weather_text)
+    notify_city = state.get("notify_city")
+    if not notify_city:
+        return
+    weather_text = await get_weather_brief(notify_city)
     wish = get_wish()
     bot = Bot(token=TELEGRAM_TOKEN)
     try:
-        await bot.send_message(chat_id=user_id, text="\n".join(result) + f"\n{wish}")
+        await bot.send_message(chat_id=user_id, text=f"{weather_text}\n{wish}")
     except Exception:
         pass
 
