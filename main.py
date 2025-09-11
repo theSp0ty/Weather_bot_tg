@@ -176,6 +176,22 @@ async def set_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ...existing code...
+    # Корректная обработка режима просмотра погоды
+    if 'view_weather_mode' in state and state['view_weather_mode']:
+        city_query = update.message.text if update.message and update.message.text else ""
+        city_query = city_query.strip().title()
+        if city_query:
+            weather_text = await get_weather(city_query)
+            await update.message.reply_text(weather_text, reply_markup=main_keyboard)
+            state['view_weather_mode'] = False
+            save_user_states()
+        else:
+            await update.message.reply_text(
+                "Город не найден. Введите название города или выберите из списка:",
+                reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]], resize_keyboard=True)
+            )
+        return
+    # ...existing code...
     # Просмотр погоды по запросу
     if state.get("view_weather_mode"):
         city_query = update.message.text
