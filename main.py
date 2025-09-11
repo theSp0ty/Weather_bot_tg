@@ -259,8 +259,8 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(f"Город {city} уже есть в вашем списке.", reply_markup=main_keyboard)
                 save_user_states()
         elif state.get("remove_mode"):
-            # ...existing remove logic...
-        return
+            # TODO: Реализовать удаление города
+            pass
     # --- ОБРАБОТКА ВЫБОРА ВРЕМЕНИ ---
     if state.get("choose_time_mode"):
         time_text = update.message.text
