@@ -41,8 +41,14 @@ def load_user_states():
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 main_keyboard = ReplyKeyboardMarkup([
-    [KeyboardButton("Добавить город"), KeyboardButton("Удалить город")],
-    [KeyboardButton("Показать погоду"), KeyboardButton("Установить время")]
+    [
+        KeyboardButton("Добавить город 🏙️"),
+        KeyboardButton("Удалить город 🗑️")
+    ],
+    [
+        KeyboardButton("Показать погоду 🌦️"),
+        KeyboardButton("Установить время ⏰")
+    ]
 ], resize_keyboard=True)
 
 scheduler = BackgroundScheduler()
@@ -121,9 +127,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_states[user_id]["remove_mode"] = False
     user_states[user_id]["add_mode"] = False
     user_states[user_id]["time_mode"] = False
-    await update.message.reply_text(
-        "Привет! Я бот прогноза погоды и хорошего настроения. Выберите действие:",
-        reply_markup=main_keyboard)
+    text = "Привет! Я бот прогноза погоды и хорошего настроения. Выберите действие:"
+    # Если время не установлено, сразу предложить установить
+    if user_states[user_id].get("send_time") is None:
+        text += "\n\n❗ Для автоматических напоминаний о погоде установите время (кнопка \"Установить время ⏰\")."
+    await update.message.reply_text(text, reply_markup=main_keyboard)
 
 async def add_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if update.effective_user else None
@@ -170,7 +178,10 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id not in user_states:
         user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
     state = user_states[user_id]
-    city = update.message.text
+    city = update.message.text.strip()
+    # Привести к виду: первая буква заглавная, остальные строчные
+    if city:
+        city = city.lower().capitalize()
     if state.get("add_mode"):
         state["add_mode"] = False
         if city not in state["cities"]:
