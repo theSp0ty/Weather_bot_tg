@@ -175,6 +175,23 @@ async def set_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Введите время для получения прогноза (например, 09:00):")
 
 async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ...existing code...
+    # Просмотр погоды по запросу
+    if state.get("view_weather_mode"):
+        city_query = update.message.text
+        if city_query is not None:
+            city_query = city_query.strip().title()
+        else:
+            city_query = ""
+        if city_query in state["cities"] or city_query:
+            weather_text = await get_weather(city_query)
+            await update.message.reply_text(weather_text, reply_markup=main_keyboard)
+            state["view_weather_mode"] = False
+            save_user_states()
+        else:
+            await update.message.reply_text("Город не найден. Введите название города или выберите из списка:",
+                reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]], resize_keyboard=True))
+        return
     user_id = update.effective_user.id if update.effective_user else None
     if user_id is None or update.message is None:
         return
@@ -398,6 +415,21 @@ async def send_weather_job(user_id):
         pass
 
 def main():
+    # Добавить команду 'Посмотреть погоду'
+    async def view_weather_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user_id = update.effective_user.id if update.effective_user else None
+        if user_id is None or update.message is None:
+            return
+        if user_id not in user_states:
+            user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
+        state = user_states[user_id]
+        state["view_weather_mode"] = True
+        if state["cities"]:
+            await update.message.reply_text("Выберите город из списка или введите название:",
+                reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]], resize_keyboard=True))
+        else:
+            await update.message.reply_text("Введите название города для прогноза:")
+        save_user_states()
     load_user_states()
     for user_id, state in user_states.items():
         send_time = state.get("send_time")
@@ -415,6 +447,7 @@ def main():
     app.add_handler(MessageHandler(filters.Regex("^Удалить город"), remove_city))
     app.add_handler(MessageHandler(filters.Regex("^Установить время"), set_time))
     app.add_handler(MessageHandler(filters.Regex("^Показать погоду"), weather))
+    app.add_handler(MessageHandler(filters.Regex("^Посмотреть погоду"), view_weather_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, city_handler))
     app.run_polling()
 
