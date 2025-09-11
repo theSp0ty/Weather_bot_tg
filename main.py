@@ -211,19 +211,34 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(f"Город {city} не найден в вашем списке.", reply_markup=main_keyboard)
         return
-    if state.get("time_mode"):
-        if city is None:
-            await update.message.reply_text("Пожалуйста, введите время в формате ЧЧ:ММ (например, 09:00)", reply_markup=main_keyboard)
-            return
-        time_text = city.strip()
-        if not re.match(r"^([01]?\d|2[0-3]):[0-5]\d$", time_text):
-            await update.message.reply_text("Пожалуйста, введите время в формате ЧЧ:ММ (например, 09:00)", reply_markup=main_keyboard)
-            return
-        state["time_mode"] = False
-        state["send_time"] = time_text
-        await update.message.reply_text(f"Время {time_text} сохранено! Теперь прогноз будет приходить автоматически.", reply_markup=main_keyboard)
-        save_user_states()
-        job_id = f"weather_{user_id}"
+    if state.get("add_mode"):
+        state["add_mode"] = False
+        # Проверяем наличие города без учёта регистра
+        cities_lower = [c.lower() for c in state["cities"]]
+        if city.lower() not in cities_lower:
+            state["cities"].append(city)
+            timezone = await get_timezone_by_city(city)
+            state["timezone"] = timezone
+            await update.message.reply_text(
+                f"✅ Город {city} добавлен! Часовой пояс: {timezone if timezone else 'не найден'}.\n\nТеперь выберите город для ежедневных уведомлений:",
+                reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]], resize_keyboard=True)
+            )
+            state["choose_city_mode"] = True
+            save_user_states()
+        else:
+            await update.message.reply_text(f"⚠️ Город {city} уже есть в вашем списке.", reply_markup=main_keyboard)
+        return
+    # Если пользователь выбирает город для прогноза
+    if state.get("choose_city_mode"):
+        chosen_city = update.message.text.strip().title()
+        if chosen_city in state["cities"]:
+            state["notify_city"] = chosen_city
+            state["choose_city_mode"] = False
+            await update.message.reply_text(f"✅ Город {chosen_city} выбран для ежедневных уведомлений.", reply_markup=main_keyboard)
+            save_user_states()
+        else:
+            await update.message.reply_text(f"⚠️ Город {chosen_city} не найден в вашем списке.", reply_markup=main_keyboard)
+        return
         try:
             scheduler.remove_job(job_id)
         except Exception:
