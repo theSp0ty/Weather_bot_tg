@@ -171,9 +171,12 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id not in user_states:
         user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
     state = user_states[user_id]
-    city = update.message.text.strip()
-    if city:
+    city = update.message.text
+    if city is not None:
+        city = city.strip()
         city = city.title()
+    else:
+        city = ""
     if state.get("add_mode"):
         state["add_mode"] = False
         cities_lower = [c.lower() for c in state["cities"]]
@@ -183,7 +186,7 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             state["timezone"] = timezone
             await update.message.reply_text(
                 f"✅ Город {city} добавлен! Часовой пояс: {timezone if timezone else 'не найден'}.\n\nХотите получать ежедневные уведомления по этому городу? Выберите его ниже или используйте команду 'Показать погоду 🌦️' для выбора.",
-                reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]], resize_keyboard=True)
+                reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]] + [[KeyboardButton('➕ Добавить город')]], resize_keyboard=True)
             )
             state["choose_city_mode"] = True
             save_user_states()
@@ -201,11 +204,13 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     # --- ВЫБОР ГОРОДА ДЛЯ УВЕДОМЛЕНИЙ ---
     if state.get("choose_city_mode"):
-        chosen_city = update.message.text.strip().title()
-        # Кнопки для выбора города + "Добавить город"
+        chosen_city = update.message.text
+        if chosen_city is not None:
+            chosen_city = chosen_city.strip().title()
+        else:
+            chosen_city = ""
         city_buttons = [[KeyboardButton(c)] for c in state["cities"]]
         city_buttons.append([KeyboardButton('➕ Добавить город')])
-        # Если пользователь выбрал добавить город
         if chosen_city == '➕ Добавить город':
             state["add_mode"] = True
             state["choose_city_mode"] = False
@@ -215,7 +220,6 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if chosen_city in state["cities"]:
             state["notify_city"] = chosen_city
             state["choose_city_mode"] = False
-            # --- ВЫБОР ВРЕМЕНИ ---
             time_options = ['07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
                             '18:00', '18:30', '19:00', '19:30', '20:00', '20:30']
             keyboard = [[KeyboardButton(t)] for t in time_options]
@@ -235,9 +239,13 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     # --- ОБРАБОТКА ВЫБОРА ВРЕМЕНИ ---
     if state.get("choose_time_mode"):
+        time_text = update.message.text
+        if time_text is not None:
+            time_text = time_text.strip()
+        else:
+            time_text = ""
         time_options = ['07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
                         '18:00', '18:30', '19:00', '19:30', '20:00', '20:30']
-        time_text = update.message.text.strip()
         if time_text == 'Ввести своё время':
             state["custom_time_mode"] = True
             state["choose_time_mode"] = False
@@ -254,7 +262,11 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_user_states()
             return
     if state.get("custom_time_mode"):
-        time_text = update.message.text.strip()
+        time_text = update.message.text
+        if time_text is not None:
+            time_text = time_text.strip()
+        else:
+            time_text = ""
         if re.match(r'^([01]\\d|2[0-3]):[0-5]\\d$', time_text):
             state["send_time"] = time_text
             state["custom_time_mode"] = False
@@ -282,7 +294,7 @@ async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not notify_city or notify_city not in cities:
         await update.message.reply_text(
             "Выберите город для прогноза:",
-            reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in cities], resize_keyboard=True)
+            reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in cities] + [[KeyboardButton('➕ Добавить город')]], resize_keyboard=True)
         )
         state["choose_city_mode"] = True
         return
@@ -341,6 +353,8 @@ async def send_weather_job(user_id):
         return
     weather_text = await get_weather_brief(notify_city)
     wish = get_wish()
+    if TELEGRAM_TOKEN is None:
+        raise ValueError("TELEGRAM_TOKEN не задан в .env")
     bot = Bot(token=TELEGRAM_TOKEN)
     try:
         await bot.send_message(chat_id=user_id, text=f"{weather_text}\n{wish}")
@@ -357,6 +371,8 @@ def main():
             job_id = f"weather_{user_id}"
             scheduler.add_job(send_weather_job, "cron", hour=hour, minute=minute, args=[user_id], id=job_id, replace_existing=True, timezone=timezone)
     scheduler.start()
+    if TELEGRAM_TOKEN is None:
+        raise ValueError("TELEGRAM_TOKEN не задан в .env")
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler('start', start))
     app.add_handler(MessageHandler(filters.Regex("^Добавить город"), add_city))
