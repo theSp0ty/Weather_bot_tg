@@ -39,7 +39,7 @@ main_keyboard = ReplyKeyboardMarkup([
     ],
     [
         KeyboardButton("Показать погоду 🌦️"),
-        KeyboardButton("Посмотреть погоду 👁️"),
+        KeyboardButton("Посмотреть погоду"),
         KeyboardButton("Установить время ⏰")
     ]
 ], resize_keyboard=True)
@@ -331,73 +331,6 @@ async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"{weather_text}\n{wish}", reply_markup=main_keyboard)
 
 async def get_weather_brief(city):
-async def get_weather_week(city):
-    try:
-        translate_url = "https://libretranslate.de/translate"
-        payload = {
-            "q": city,
-            "source": "ru",
-            "target": "en",
-            "format": "text"
-        }
-        resp = requests.post(translate_url, json=payload, timeout=5)
-        if resp.status_code == 200:
-            city_en = resp.json().get("translatedText", city)
-        else:
-            city_en = city
-    except Exception:
-        city_en = city
-    url = f"https://api.openweathermap.org/data/2.5/forecast?q={city_en}&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru"
-    try:
-        response = requests.get(url)
-        data = response.json()
-        if data.get('cod') != "200":
-            return f"Не удалось получить прогноз для {city}."
-        days = {}
-        for item in data['list']:
-            date = item['dt_txt'][:10]
-            hour = int(item['dt_txt'][11:13])
-            if date not in days:
-                days[date] = {
-                    'temps': [],
-                    'winds': [],
-                    'rain_hours': []
-                }
-            days[date]['temps'].append(item['main']['temp'])
-            days[date]['winds'].append(item['wind']['speed'])
-            if 'rain' in item and item['rain'].get('3h', 0) > 0:
-                days[date]['rain_hours'].append(item['dt_txt'][11:16])
-        result = f"{city}:\n"
-        for date, info in days.items():
-            temp_max = max(info['temps']) if info['temps'] else None
-            temp_min = min(info['temps']) if info['temps'] else None
-            wind_avg = round(sum(info['winds']) / len(info['winds']), 1) if info['winds'] else None
-            rain_text = "Без дождя"
-            if info['rain_hours']:
-                rain_ranges = []
-                start = end = None
-                for h in info['rain_hours']:
-                    try:
-                        if start is None:
-                            start = end = h
-                        elif end is not None and h is not None and int(h[:2]) == int(end[:2]) + 3:
-                            end = h
-                        else:
-                            rain_ranges.append((start, end))
-                            start = end = h
-                    except Exception:
-                        rain_ranges.append((start, end))
-                        start = end = h
-                if start is not None and end is not None:
-                    rain_ranges.append((start, end))
-                if len(rain_ranges) == 1 and rain_ranges[0][0] == rain_ranges[0][1]:
-                    rain_text = f"Дождь ожидается в {rain_ranges[0][0]}"
-                else:
-                    rain_text = "Дождь:\n" + '\n'.join([f"• с {r[0]} по {r[1]}" if r[0] != r[1] else f"• в {r[0]}" for r in rain_ranges])
-            result += f"\n{date}:\n{rain_text}\nВетер: {wind_avg if wind_avg is not None else '-'} м/с\nТемпература: от {temp_min if temp_min is not None else '-'}°C до {temp_max if temp_max is not None else '-'}°C\n"
-        return result
-    except Exception as e:
-        return f"Ошибка: {e}"
     try:
         translate_url = "https://libretranslate.de/translate"
         payload = {
@@ -456,10 +389,11 @@ async def get_weather_week(city):
             if len(rain_ranges) == 1 and rain_ranges[0][0] == rain_ranges[0][1]:
                 rain_text = f"Дождь ожидается в {rain_ranges[0][0]}"
             else:
-                rain_text = "Дождь:\n" + '\n'.join([f"• с {r[0]} по {r[1]}" if r[0] != r[1] else f"• в {r[0]}" for r in rain_ranges])
+                ranges_str = ', '.join([f"с {r[0]} по {r[1]}" if r[0] != r[1] else f"в {r[0]}" for r in rain_ranges])
+                rain_text = f"Дождь: {ranges_str}"
         else:
             rain_text = "Без дождя"
-        return f"{city}:\n{rain_text}\nВетер: {wind_avg} м/с\nТемпература: от {temp_min}°C до {temp_max}°C"
+        return f"{city}: {rain_text}, ветер {wind_avg} м/с, температура от {temp_min}°C до {temp_max}°C"
     except Exception as e:
         return f"Ошибка: {e}"
 
@@ -495,28 +429,6 @@ def main():
         else:
             await update.message.reply_text("Введите название города для прогноза:")
         save_user_states()
-
-        # Ожидание ввода города и вывод прогноза на неделю
-        def check_city_input(text):
-            return text and text.strip() and text.strip() not in ["Добавить город 🏙️", "Удалить город 🗑️", "Показать погоду 🌦️", "Посмотреть погоду 👁️", "Установить время ⏰"]
-
-        async def city_input_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            if update.message and update.message.text:
-                city_query = update.message.text.strip()
-            else:
-                city_query = None
-            if not check_city_input(city_query):
-                if update.message:
-                    await update.message.reply_text("Пожалуйста, введите корректное название города.")
-                return
-            week_weather = await get_weather_week(city_query)
-            if update.message:
-                await update.message.reply_text(week_weather, reply_markup=main_keyboard)
-            state["view_weather_mode"] = False
-            save_user_states()
-
-        app = context.application
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, city_input_handler), group=1)
 
     load_user_states()
     for user_id, state in user_states.items():
