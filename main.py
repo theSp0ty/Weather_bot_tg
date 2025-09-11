@@ -183,13 +183,13 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
     state = user_states[user_id]
 
-    # --- Просмотр погоды по запросу (неделя) ---
+    # --- Просмотр погоды по запросу ---
     if state.get('view_weather_mode'):
         city_query = update.message.text if update.message and update.message.text else ""
         city_query = city_query.strip().title()
         if city_query:
-            week_weather = await get_weather_week(city_query)
-            await update.message.reply_text(week_weather, reply_markup=main_keyboard)
+            weather_text = await get_weather(city_query)
+            await update.message.reply_text(weather_text, reply_markup=main_keyboard)
             state['view_weather_mode'] = False
             save_user_states()
         else:
@@ -232,24 +232,39 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     # --- ВЫБОР ГОРОДА ДЛЯ УВЕДОМЛЕНИЙ ---
     if state.get("choose_city_mode"):
-        city = update.message.text
-        if city is not None:
-            city = city.strip()
-            city = city.title()
+        chosen_city = update.message.text
+        if chosen_city is not None:
+            chosen_city = chosen_city.strip().title()
         else:
-            city = ""
-        if city in state["cities"]:
-            state["notify_city"] = city
+            chosen_city = ""
+        city_buttons = [[KeyboardButton(c)] for c in state["cities"]]
+        city_buttons.append([KeyboardButton('➕ Добавить город')])
+        if chosen_city.strip().lower() == '➕ добавить город'.lower():
+            state["add_mode"] = True
             state["choose_city_mode"] = False
-            await update.message.reply_text(f"✅ Город для уведомлений выбран: {city}", reply_markup=main_keyboard)
+            await update.message.reply_text("Введите название города для добавления:")
             save_user_states()
+            return
+        if chosen_city in state["cities"]:
+            state["notify_city"] = chosen_city
+            state["choose_city_mode"] = False
+            time_options = ['07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
+                            '18:00', '18:30', '19:00', '19:30', '20:00', '20:30']
+            keyboard = [[KeyboardButton(t)] for t in time_options]
+            keyboard.append([KeyboardButton('Ввести своё время')])
+            await update.message.reply_text(
+                f"Вы выбрали город {chosen_city} для уведомлений.\nВыберите время для получения ежедневных уведомлений или нажмите 'Ввести своё время':",
+                reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            )
+            state["choose_time_mode"] = True
+            save_user_states()
+            return
         else:
-            await update.message.reply_text(f"Город {city} не найден в вашем списке. Выберите город из списка или добавьте новый.", reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]] + [[KeyboardButton('➕ Добавить город')]], resize_keyboard=True))
-            save_user_states()
+            await update.message.reply_text(
+                f"⚠️ Город {chosen_city} не найден в вашем списке.\nВыберите город или добавьте новый:",
+                reply_markup=ReplyKeyboardMarkup(city_buttons, resize_keyboard=True)
+            )
         return
-    elif state.get("remove_mode"):
-        # TODO: Реализовать удаление города
-        pass
     # --- ОБРАБОТКА ВЫБОРА ВРЕМЕНИ ---
     if state.get("choose_time_mode"):
         time_text = update.message.text
@@ -550,7 +565,27 @@ def main():
             await update.message.reply_text("Введите название города для прогноза:")
         save_user_states()
 
-    # Вся обработка выбора города для прогноза теперь в city_handler
+        # Ожидание ввода города и вывод прогноза на неделю
+        def check_city_input(text):
+            return text and text.strip() and text.strip() not in ["Добавить город 🏙️", "Удалить город 🗑️", "Показать погоду 🌦️", "Посмотреть погоду 👁️", "Установить время ⏰"]
+
+        async def city_input_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            if update.message and update.message.text:
+                city_query = update.message.text.strip()
+            else:
+                city_query = None
+            if not check_city_input(city_query):
+                if update.message:
+                    await update.message.reply_text("Пожалуйста, введите корректное название города.")
+                return
+            week_weather = await get_weather_week(city_query)
+            if update.message:
+                await update.message.reply_text(week_weather, reply_markup=main_keyboard)
+            state["view_weather_mode"] = False
+            save_user_states()
+
+        app = context.application
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, city_input_handler), group=1)
 
     load_user_states()
     for user_id, state in user_states.items():
