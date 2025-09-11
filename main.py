@@ -232,38 +232,34 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     # --- ВЫБОР ГОРОДА ДЛЯ УВЕДОМЛЕНИЙ ---
     if state.get("choose_city_mode"):
-        chosen_city = update.message.text
-        if chosen_city is not None:
-            chosen_city = chosen_city.strip().title()
+        city = update.message.text
+        if city is not None:
+            city = city.strip()
+            city = city.title()
         else:
-            chosen_city = ""
-        city_buttons = [[KeyboardButton(c)] for c in state["cities"]]
-        city_buttons.append([KeyboardButton('➕ Добавить город')])
-        if chosen_city.strip().lower() == '➕ добавить город'.lower():
-            state["add_mode"] = True
-            state["choose_city_mode"] = False
-            await update.message.reply_text("Введите название города для добавления:")
-            save_user_states()
-            return
-        if chosen_city in state["cities"]:
-            state["notify_city"] = chosen_city
-            state["choose_city_mode"] = False
-            time_options = ['07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
-                            '18:00', '18:30', '19:00', '19:30', '20:00', '20:30']
-            keyboard = [[KeyboardButton(t)] for t in time_options]
-            keyboard.append([KeyboardButton('Ввести своё время')])
-            await update.message.reply_text(
-                f"Вы выбрали город {chosen_city} для уведомлений.\nВыберите время для получения ежедневных уведомлений или нажмите 'Ввести своё время':",
-                reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-            )
-            state["choose_time_mode"] = True
-            save_user_states()
-            return
-        else:
-            await update.message.reply_text(
-                f"⚠️ Город {chosen_city} не найден в вашем списке.\nВыберите город или добавьте новый:",
-                reply_markup=ReplyKeyboardMarkup(city_buttons, resize_keyboard=True)
-            )
+            city = ""
+        if state.get("add_mode"):
+            state["add_mode"] = False
+            if not city or len(city) < 2 or not re.match(r'^[а-яА-Яa-zA-Z\-\s]+$', city):
+                await update.message.reply_text("Пожалуйста, введите корректное название города.", reply_markup=main_keyboard)
+                save_user_states()
+                return
+            cities_lower = [c.lower() for c in state["cities"]]
+            if city.lower() not in cities_lower:
+                state["cities"].append(city)
+                timezone = await get_timezone_by_city(city)
+                state["timezone"] = timezone
+                await update.message.reply_text(
+                    f"✅ Город {city} добавлен! Часовой пояс: {timezone if timezone else 'не найден'}.\n\nХотите получать ежедневные уведомления по этому городу? Выберите его ниже или используйте команду 'Показать погоду 🌦️' для выбора.",
+                    reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]] + [[KeyboardButton('➕ Добавить город')]], resize_keyboard=True)
+                )
+                state["choose_city_mode"] = True
+                save_user_states()
+            else:
+                await update.message.reply_text(f"Город {city} уже есть в вашем списке.", reply_markup=main_keyboard)
+                save_user_states()
+        elif state.get("remove_mode"):
+            # ...existing remove logic...
         return
     # --- ОБРАБОТКА ВЫБОРА ВРЕМЕНИ ---
     if state.get("choose_time_mode"):
