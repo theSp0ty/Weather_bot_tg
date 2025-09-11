@@ -10,9 +10,9 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 USER_DATA_FILE = 'users.json'
 user_states = {}
-TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN', '8457873161:AAFCPkxBXG4RYHxi4u32WtW2maKp2kCH5lQ')
-OPENWEATHER_API_KEY = os.getenv('OPENWEATHER_API_KEY', '28a11a0e41ccf67f7f0ef9ee9ea9c1cb')
-TIMEZONEDB_API_KEY = os.getenv('TIMEZONEDB_API_KEY', 'demo')
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
+OPENWEATHER_API_KEY = os.getenv('OPENWEATHER_API_KEY')
+TIMEZONEDB_API_KEY = os.getenv('TIMEZONEDB_API_KEY')
 
 def save_user_states():
     global user_states
