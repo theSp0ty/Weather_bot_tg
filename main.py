@@ -202,6 +202,16 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- ВЫБОР ГОРОДА ДЛЯ УВЕДОМЛЕНИЙ ---
     if state.get("choose_city_mode"):
         chosen_city = update.message.text.strip().title()
+        # Кнопки для выбора города + "Добавить город"
+        city_buttons = [[KeyboardButton(c)] for c in state["cities"]]
+        city_buttons.append([KeyboardButton('➕ Добавить город')])
+        # Если пользователь выбрал добавить город
+        if chosen_city == '➕ Добавить город':
+            state["add_mode"] = True
+            state["choose_city_mode"] = False
+            await update.message.reply_text("Введите название города для добавления:")
+            save_user_states()
+            return
         if chosen_city in state["cities"]:
             state["notify_city"] = chosen_city
             state["choose_city_mode"] = False
@@ -218,7 +228,10 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_user_states()
             return
         else:
-            await update.message.reply_text(f"⚠️ Город {chosen_city} не найден в вашем списке.", reply_markup=main_keyboard)
+            await update.message.reply_text(
+                f"⚠️ Город {chosen_city} не найден в вашем списке.\nВыберите город или добавьте новый:",
+                reply_markup=ReplyKeyboardMarkup(city_buttons, resize_keyboard=True)
+            )
         return
     # --- ОБРАБОТКА ВЫБОРА ВРЕМЕНИ ---
     if state.get("choose_time_mode"):
