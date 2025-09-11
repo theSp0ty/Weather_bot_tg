@@ -1,5 +1,3 @@
-
-
 import logging
 import os
 import random
@@ -187,17 +185,16 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         city = city.title()
     if state.get("add_mode"):
         state["add_mode"] = False
-        # Проверяем наличие города без учёта регистра
         cities_lower = [c.lower() for c in state["cities"]]
         if city.lower() not in cities_lower:
             state["cities"].append(city)
             timezone = await get_timezone_by_city(city)
             state["timezone"] = timezone
-            # После добавления города предлагаем выбрать его для уведомлений
-            state["notify_city"] = city
             await update.message.reply_text(
-                f"✅ Город {city} добавлен! Часовой пояс: {timezone if timezone else 'не найден'}.\n\nЭтот город будет использоваться для ежедневных уведомлений о погоде. Если хотите выбрать другой город — используйте команду 'Показать погоду 🌦️' и выберите нужный город.",
-                reply_markup=main_keyboard)
+                f"✅ Город {city} добавлен! Часовой пояс: {timezone if timezone else 'не найден'}.\n\nХотите получать ежедневные уведомления по этому городу? Выберите его ниже или используйте команду 'Показать погоду 🌦️' для выбора.",
+                reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]], resize_keyboard=True)
+            )
+            state["choose_city_mode"] = True
             save_user_states()
         else:
             await update.message.reply_text(f"⚠️ Город {city} уже есть в вашем списке.", reply_markup=main_keyboard)
@@ -213,7 +210,6 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if state.get("add_mode"):
         state["add_mode"] = False
-        # Проверяем наличие города без учёта регистра
         cities_lower = [c.lower() for c in state["cities"]]
         if city.lower() not in cities_lower:
             state["cities"].append(city)
@@ -285,7 +281,7 @@ async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"⚠️ Город {chosen_city} не найден в вашем списке.", reply_markup=main_keyboard)
         return
 async def get_weather_brief(city):
-    # Краткий прогноз на день
+    # Краткий прогноз на световой день: дождь/нет, ветер, макс/мин температура
     try:
         translate_url = "https://libretranslate.de/translate"
         payload = {
@@ -301,17 +297,29 @@ async def get_weather_brief(city):
             city_en = city
     except Exception:
         city_en = city
-    url = f"https://api.openweathermap.org/data/2.5/weather?q={city_en}&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru"
+    url = f"https://api.openweathermap.org/data/2.5/forecast?q={city_en}&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru"
     try:
         response = requests.get(url)
         data = response.json()
-        if data.get('cod') != 200:
-            return f"Не удалось получить погоду для {city}."
-        temp = data['main']['temp']
-        desc = data['weather'][0]['description']
-        wind = data['wind']['speed']
-        humidity = data['main']['humidity']
-        return f"{city}: {desc}, {temp}°C, ветер {wind} м/с, влажность {humidity}%"
+        if data.get('cod') != "200":
+            return f"Не удалось получить прогноз для {city}."
+        temps = []
+        winds = []
+        rain = False
+        for item in data['list']:
+            hour = int(item['dt_txt'][11:13])
+            if 6 <= hour <= 21:
+                temps.append(item['main']['temp'])
+                winds.append(item['wind']['speed'])
+                if 'rain' in item and item['rain'].get('3h', 0) > 0:
+                    rain = True
+        if not temps:
+            return f"Нет данных о прогнозе на световой день для {city}."
+        temp_max = max(temps)
+        temp_min = min(temps)
+        wind_avg = round(sum(winds) / len(winds), 1)
+        rain_text = "Будет дождь" if rain else "Без дождя"
+        return f"{city}: {rain_text}, ветер {wind_avg} м/с, температура от {temp_min}°C до {temp_max}°C"
     except Exception as e:
         return f"Ошибка: {e}"
 
