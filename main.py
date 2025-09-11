@@ -183,13 +183,13 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
     state = user_states[user_id]
 
-    # --- Просмотр погоды по запросу ---
+    # --- Просмотр погоды по запросу (неделя) ---
     if state.get('view_weather_mode'):
         city_query = update.message.text if update.message and update.message.text else ""
         city_query = city_query.strip().title()
         if city_query:
-            weather_text = await get_weather(city_query)
-            await update.message.reply_text(weather_text, reply_markup=main_keyboard)
+            week_weather = await get_weather_week(city_query)
+            await update.message.reply_text(week_weather, reply_markup=main_keyboard)
             state['view_weather_mode'] = False
             save_user_states()
         else:
@@ -238,26 +238,15 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             city = city.title()
         else:
             city = ""
-        if state.get("add_mode"):
-            state["add_mode"] = False
-            if not city or len(city) < 2 or not re.match(r'^[а-яА-Яa-zA-Z\-\s]+$', city):
-                await update.message.reply_text("Пожалуйста, введите корректное название города.", reply_markup=main_keyboard)
-                save_user_states()
-                return
-            cities_lower = [c.lower() for c in state["cities"]]
-            if city.lower() not in cities_lower:
-                state["cities"].append(city)
-                timezone = await get_timezone_by_city(city)
-                state["timezone"] = timezone
-                await update.message.reply_text(
-                    f"✅ Город {city} добавлен! Часовой пояс: {timezone if timezone else 'не найден'}.\n\nХотите получать ежедневные уведомления по этому городу? Выберите его ниже или используйте команду 'Показать погоду 🌦️' для выбора.",
-                    reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]] + [[KeyboardButton('➕ Добавить город')]], resize_keyboard=True)
-                )
-                state["choose_city_mode"] = True
-                save_user_states()
-            else:
-                await update.message.reply_text(f"Город {city} уже есть в вашем списке.", reply_markup=main_keyboard)
-                save_user_states()
+        if city in state["cities"]:
+            state["notify_city"] = city
+            state["choose_city_mode"] = False
+            await update.message.reply_text(f"✅ Город для уведомлений выбран: {city}", reply_markup=main_keyboard)
+            save_user_states()
+        else:
+            await update.message.reply_text(f"Город {city} не найден в вашем списке. Выберите город из списка или добавьте новый.", reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]] + [[KeyboardButton('➕ Добавить город')]], resize_keyboard=True))
+            save_user_states()
+        return
         elif state.get("remove_mode"):
             # TODO: Реализовать удаление города
             pass
@@ -561,27 +550,7 @@ def main():
             await update.message.reply_text("Введите название города для прогноза:")
         save_user_states()
 
-        # Ожидание ввода города и вывод прогноза на неделю
-        def check_city_input(text):
-            return text and text.strip() and text.strip() not in ["Добавить город 🏙️", "Удалить город 🗑️", "Показать погоду 🌦️", "Посмотреть погоду 👁️", "Установить время ⏰"]
-
-        async def city_input_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            if update.message and update.message.text:
-                city_query = update.message.text.strip()
-            else:
-                city_query = None
-            if not check_city_input(city_query):
-                if update.message:
-                    await update.message.reply_text("Пожалуйста, введите корректное название города.")
-                return
-            week_weather = await get_weather_week(city_query)
-            if update.message:
-                await update.message.reply_text(week_weather, reply_markup=main_keyboard)
-            state["view_weather_mode"] = False
-            save_user_states()
-
-        app = context.application
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, city_input_handler), group=1)
+    # Вся обработка выбора города для прогноза теперь в city_handler
 
     load_user_states()
     for user_id, state in user_states.items():
