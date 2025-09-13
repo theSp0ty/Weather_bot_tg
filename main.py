@@ -202,18 +202,73 @@ async def set_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if user_id not in user_states:
         user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
-    user_states[user_id]["time_mode"] = True
-    user_states[user_id]["add_mode"] = False
-    user_states[user_id]["remove_mode"] = False
-    await update.message.reply_text("Введите время для получения прогноза (например, 09:00):")
+    state = user_states[user_id]
+    state["time_mode"] = True
+    state["add_mode"] = False
+    state["remove_mode"] = False
+    cities = state["cities"]
+    if cities:
+        state["choose_time_city_mode"] = True
+        await update.message.reply_text(
+            "Выберите город для которого хотите установить время:",
+            reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in cities], resize_keyboard=True)
+        )
+    else:
+        await update.message.reply_text("Сначала добавьте хотя бы один город.", reply_markup=main_keyboard)
 
 async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ...existing code...
+    # Handle city selection for time setting
+    if state.get("choose_time_city_mode"):
+        chosen_city = update.message.text
+        if chosen_city is not None:
+            chosen_city = chosen_city.strip().title()
+        else:
+            chosen_city = ""
+        if chosen_city in state["cities"]:
+            state["notify_city"] = chosen_city
+            state["choose_time_city_mode"] = False
+            await update.message.reply_text(
+                f"Введите время для получения прогноза по городу {chosen_city} (например, 09:00):",
+                reply_markup=main_keyboard
+            )
+            state["time_mode"] = True
+            save_user_states()
+            return
+        else:
+            await update.message.reply_text(
+                f"Город {chosen_city} не найден в вашем списке. Выберите город из списка:",
+                reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]], resize_keyboard=True)
+            )
+            return
     user_id = update.effective_user.id if update.effective_user else None
     if user_id is None or update.message is None:
         return
     if user_id not in user_states:
         user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
     state = user_states[user_id]
+    # Handle city selection for time setting
+    if state.get("choose_time_city_mode"):
+        if update.message and update.message.text:
+            chosen_city = update.message.text.strip().title()
+        else:
+            chosen_city = ""
+        if chosen_city in state["cities"]:
+            state["notify_city"] = chosen_city
+            state["choose_time_city_mode"] = False
+            await update.message.reply_text(
+                f"Введите время для получения прогноза по городу {chosen_city} (например, 09:00):",
+                reply_markup=main_keyboard
+            )
+            state["time_mode"] = True
+            save_user_states()
+            return
+        else:
+            await update.message.reply_text(
+                f"Город {chosen_city} не найден в вашем списке. Выберите город из списка:",
+                reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]], resize_keyboard=True)
+            )
+            return
     city = update.message.text
     if city is not None:
         city = city.strip()
