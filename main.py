@@ -7,10 +7,12 @@ def update_user_job(user_id):
     notify_city = state.get("notify_city")
     timezone = state.get("timezone", "Europe/Moscow")
     job_id = f"weather_{user_id}"
+    print(f"[JobUpdate] user_id={user_id}, send_time={send_time}, notify_city={notify_city}, timezone={timezone}")
     if send_time and notify_city:
         hour, minute = map(int, send_time.split(":"))
-        print(f"[JobUpdate] Обновление задачи: user_id={user_id}, job_id={job_id}, time={send_time}, city={notify_city}")
+        print(f"[JobUpdate] Обновление задачи: user_id={user_id}, job_id={job_id}, time={send_time}, city={notify_city}, tz={timezone}")
         scheduler.add_job(send_weather_job_sync, "cron", hour=hour, minute=minute, args=[user_id], id=job_id, replace_existing=True, timezone=timezone)
+        print(f"[JobUpdate] Задача добавлена: {scheduler.get_job(job_id)}")
     else:
         print(f"[JobUpdate] Не хватает данных для задачи: user_id={user_id}")
         try:
@@ -189,7 +191,9 @@ def send_weather_job_sync(user_id):
     import asyncio
     print(f"[Scheduler] Запуск уведомления для user_id={user_id}")
     try:
+        print(f"[Scheduler] Перед запуском: user_states={user_states.get(user_id)}")
         asyncio.run(send_weather_job(user_id))
+        print(f"[Scheduler] После запуска: user_states={user_states.get(user_id)}")
     except Exception as e:
         print(f"[Scheduler] Ошибка при отправке уведомления: {e}")
 
