@@ -265,11 +265,16 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if chosen_city in state["cities"]:
             state["notify_city"] = chosen_city
             state["choose_time_city_mode"] = False
+            # Предложить выбрать время сразу после выбора города
+            time_options = ['07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
+                            '18:00', '18:30', '19:00', '19:30', '20:00', '20:30']
+            keyboard = [[KeyboardButton(t)] for t in time_options]
+            keyboard.append([KeyboardButton('Ввести своё время')])
             await update.message.reply_text(
-                f"Введите время для получения прогноза по городу {chosen_city} (например, 09:00):",
-                reply_markup=main_keyboard
+                f"Вы выбрали город {chosen_city} для уведомлений.\nВыберите время для получения ежедневных уведомлений или нажмите 'Ввести своё время':",
+                reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
             )
-            state["time_mode"] = True
+            state["choose_time_mode"] = True
             save_user_states()
             return
         else:
