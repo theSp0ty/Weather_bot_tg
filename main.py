@@ -391,12 +391,12 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if time_text in time_options:
             state["send_time"] = time_text
             state["choose_time_mode"] = False
+            save_user_states()
+            update_user_job(user_id)
             await update.message.reply_text(
                 f"⏰ Уведомления по городу {state['notify_city']} будут приходить каждый день в {time_text}!",
                 reply_markup=main_keyboard
             )
-            save_user_states()
-            update_user_job(user_id)
             return
     if state.get("custom_time_mode"):
         time_text = update.message.text
