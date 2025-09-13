@@ -331,6 +331,16 @@ def main():
     application.add_handler(set_time_handler_obj)
     application.add_handler(stop_handler_obj)
     application.add_handler(echo_handler_obj)
+    app.add_handler(MessageHandler(filters.Regex("^Добавить город 🏙️$"), add_city))
+    app.add_handler(MessageHandler(filters.Regex("^Удалить город 🗑️$"), remove_city))
+    app.add_handler(MessageHandler(filters.Regex("^Мои города 📋$"), show_cities))
+    app.add_handler(MessageHandler(filters.Regex("^Расписание уведомлений 🕒$"), show_schedule))
+    app.add_handler(MessageHandler(filters.Regex("^Остановить уведомления ❌$"), stop_notifications))
+    app.add_handler(MessageHandler(filters.Regex("^Показать погоду 🌦️$"), weather))
+    app.add_handler(MessageHandler(filters.Regex("^Посмотреть погоду 🌍$"), view_weather_cmd))
+    app.add_handler(MessageHandler(filters.Regex("^Установить время ⏰$"), set_time))
+    app.add_handler(MessageHandler(filters.Regex("^Помощь /help$|^/help$"), help_cmd))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, city_handler))
     application.run_polling()
 
 if __name__ == "__main__":
