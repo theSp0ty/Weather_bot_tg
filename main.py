@@ -644,8 +644,12 @@ async def go_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     # Сброс всех временных режимов
     state = user_states.get(user_id, {})
-    for key in ["add_mode", "remove_mode", "time_mode", "choose_city_mode", "choose_time_mode", "custom_time_mode", "choose_time_city_mode", "view_weather_mode"]:
-        state[key] = False
+    for key in [
+        "add_mode", "remove_mode", "time_mode", "choose_city_mode", "choose_time_mode",
+        "custom_time_mode", "choose_time_city_mode", "view_weather_mode", "notify_city"
+    ]:
+        if key in state:
+            state[key] = False
     await update.message.reply_text("Главное меню:", reply_markup=main_keyboard)
     save_user_states()
 
