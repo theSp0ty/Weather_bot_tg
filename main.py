@@ -457,7 +457,7 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(
                 "Выберите город для уведомлений:",
                 reply_markup=ReplyKeyboardMarkup(
-                    [[KeyboardButton(c)] for c in state["cities"]] + [[KeyboardButton('Домой 🏠')]], resize_keyboard=True)
+                    [[KeyboardButton(c)] for c in state["cities"]] + [[KeyboardButton('➕ Добавить город')], [KeyboardButton('Домой 🏠')]], resize_keyboard=True)
             )
             save_user_states()
         else:
