@@ -253,6 +253,8 @@ async def set_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Выберите город для которого хотите установить время:",
             reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in cities], resize_keyboard=True)
         )
+        # После выбора города сразу предложить время (дизайн как выше)
+        # Это реализовано в city_handler, но если город уже выбран, можно сразу показать клавиатуру времени
     else:
         await update.message.reply_text("Сначала добавьте хотя бы один город.", reply_markup=main_keyboard)
 
@@ -273,14 +275,19 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             state["notify_city"] = chosen_city
             state["choose_time_city_mode"] = False
             # Предложить выбрать время сразу после выбора города
-            time_options = ['07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
-                            '18:00', '18:30', '19:00', '19:30', '20:00', '20:30']
-            keyboard = [[KeyboardButton(t)] for t in time_options]
-            keyboard.append([KeyboardButton('Ввести своё время')])
+            # Новый дизайн клавиатуры времени
             await update.message.reply_text(
                 f"Вы выбрали город {chosen_city} для уведомлений.\nВыберите время для получения ежедневных уведомлений или нажмите 'Ввести своё время':",
-                reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-            )
+                reply_markup=ReplyKeyboardMarkup(
+                    [[KeyboardButton('Ввести своё время')]] +
+                    [
+                        [KeyboardButton('07:00'), KeyboardButton('07:30'), KeyboardButton('08:00')],
+                        [KeyboardButton('08:30'), KeyboardButton('09:00'), KeyboardButton('09:30')],
+                        [KeyboardButton('10:00'), KeyboardButton('10:30'), KeyboardButton('18:00')],
+                        [KeyboardButton('18:30'), KeyboardButton('19:00'), KeyboardButton('19:30')],
+                        [KeyboardButton('20:00'), KeyboardButton('20:30')]
+                    ], resize_keyboard=True)
+                )
             state["choose_time_mode"] = True
             save_user_states()
             return
@@ -340,10 +347,15 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             state["choose_city_mode"] = False
             save_user_states()
             update_user_job(user_id)
-            # Если нет времени, предупредить пользователя
-            if not state.get("send_time"):
+            send_time = state.get("send_time")
+            if send_time:
                 await update.message.reply_text(
-                    "❗ Уведомления будут приходить только после выбора времени!\nВыберите время для получения ежедневных уведомлений или нажмите 'Ввести своё время':",
+                    f"✅ Город {chosen_city} выбран для уведомлений!\nУведомления будут приходить каждый день в {send_time}.",
+                    reply_markup=main_keyboard
+                )
+            else:
+                await update.message.reply_text(
+                    f"✅ Город {chosen_city} выбран для уведомлений!\n❗ Уведомления будут приходить только после выбора времени!\nВыберите время для получения ежедневных уведомлений или нажмите 'Ввести своё время':",
                     reply_markup=ReplyKeyboardMarkup(
                         [[KeyboardButton('Ввести своё время')]] +
                         [
@@ -437,10 +449,10 @@ async def view_weather_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = user_states[user_id]
     state["view_weather_mode"] = True
     if state["cities"]:
-        await update.message.reply_text("Выберите город из списка или введите название:",
+        await update.message.reply_text("👀 Выберите город из списка или введите название:",
             reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]], resize_keyboard=True))
     else:
-        await update.message.reply_text("Введите название города для прогноза:")
+        await update.message.reply_text("👀 Введите название города для прогноза:")
     save_user_states()
 
 def main():
