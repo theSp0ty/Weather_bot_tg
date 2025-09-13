@@ -137,9 +137,6 @@ async def get_weather_brief(city):
         return f"Ошибка: {e}"
 
 async def send_weather_job(user_id):
-def send_weather_job_sync(user_id):
-    import asyncio
-    asyncio.run(send_weather_job(user_id))
     state = user_states.get(user_id)
     if not state or not state.get("cities"):
         return
@@ -155,6 +152,10 @@ def send_weather_job_sync(user_id):
         await bot.send_message(chat_id=user_id, text=f"{weather_text}\n{wish}")
     except Exception:
         pass
+
+def send_weather_job_sync(user_id):
+    import asyncio
+    asyncio.run(send_weather_job(user_id))
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if update.effective_user else None
@@ -220,30 +221,6 @@ async def set_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Сначала добавьте хотя бы один город.", reply_markup=main_keyboard)
 
 async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ...existing code...
-    # Handle city selection for time setting
-    if state.get("choose_time_city_mode"):
-        chosen_city = update.message.text
-        if chosen_city is not None:
-            chosen_city = chosen_city.strip().title()
-        else:
-            chosen_city = ""
-        if chosen_city in state["cities"]:
-            state["notify_city"] = chosen_city
-            state["choose_time_city_mode"] = False
-            await update.message.reply_text(
-                f"Введите время для получения прогноза по городу {chosen_city} (например, 09:00):",
-                reply_markup=main_keyboard
-            )
-            state["time_mode"] = True
-            save_user_states()
-            return
-        else:
-            await update.message.reply_text(
-                f"Город {chosen_city} не найден в вашем списке. Выберите город из списка:",
-                reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]], resize_keyboard=True)
-            )
-            return
     user_id = update.effective_user.id if update.effective_user else None
     if user_id is None or update.message is None:
         return
