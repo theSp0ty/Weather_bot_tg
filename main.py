@@ -60,7 +60,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 main_keyboard = ReplyKeyboardMarkup([
     [KeyboardButton("Добавить город 🏙️"), KeyboardButton("Удалить город 🗑️")],
     [KeyboardButton("Мои города 📋"), KeyboardButton("Расписание уведомлений 🕒")],
-    [KeyboardButton("Показать погоду 🌦️"), KeyboardButton("Посмотреть погоду 🌍"), KeyboardButton("Установить время ⏰")],
+    [KeyboardButton("Посмотреть погоду 🌍"), KeyboardButton("Установить время ⏰")],
     [KeyboardButton("Остановить уведомления ❌"), KeyboardButton("Помощь 🆘")]
 ], resize_keyboard=True)
 
@@ -725,7 +725,6 @@ def main():
     app.add_handler(MessageHandler(filters.Regex("^Мои города 📋$"), show_cities))
     app.add_handler(MessageHandler(filters.Regex("^Расписание уведомлений 🕒$"), show_schedule))
     app.add_handler(MessageHandler(filters.Regex("^Остановить уведомления ❌$"), stop_notifications))
-    app.add_handler(MessageHandler(filters.Regex("^Показать погоду 🌦️$"), weather))
     app.add_handler(MessageHandler(filters.Regex("^Посмотреть погоду 🌍$"), view_weather_cmd))
     app.add_handler(MessageHandler(filters.Regex("^Установить время ⏰$"), set_time))
     app.add_handler(MessageHandler(filters.Regex("^Помощь /help$|^/help$|^Помощь 🆘$|^Помощь$"), help_cmd))
