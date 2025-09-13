@@ -181,26 +181,59 @@ async def get_weather_5days(city):
         data = response.json()
         if data.get('cod') != "200":
             return f"Не удалось получить прогноз для {city}."
+        import datetime
         days = {}
         for item in data['list']:
             date = item['dt_txt'][:10]
             temp = item['main']['temp']
             desc = item['weather'][0]['description']
             wind = item['wind']['speed']
+            humidity = item['main'].get('humidity')
+            pressure = item['main'].get('pressure')
+            rain = item.get('rain', {}).get('3h', 0)
+            clouds = item.get('clouds', {}).get('all', 0)
             if date not in days:
-                days[date] = {"temps": [], "descs": [], "winds": []}
+                days[date] = {"temps": [], "descs": [], "winds": [], "humidity": [], "pressure": [], "rain": [], "clouds": []}
             days[date]["temps"].append(temp)
             days[date]["descs"].append(desc)
             days[date]["winds"].append(wind)
+            days[date]["humidity"].append(humidity)
+            days[date]["pressure"].append(pressure)
+            days[date]["rain"].append(rain)
+            days[date]["clouds"].append(clouds)
         msg = f"Прогноз на 5 дней для {city}:\n"
         for i, (date, info) in enumerate(days.items()):
             if i >= 5:
                 break
+            dt = datetime.datetime.strptime(date, "%Y-%m-%d")
+            weekday = dt.strftime("%A")
+            weekday_ru = {
+                "Monday": "Понедельник",
+                "Tuesday": "Вторник",
+                "Wednesday": "Среда",
+                "Thursday": "Четверг",
+                "Friday": "Пятница",
+                "Saturday": "Суббота",
+                "Sunday": "Воскресенье"
+            }[weekday]
+            date_fmt = dt.strftime("%d.%m.%Y")
             t_min = int(min(info["temps"]))
             t_max = int(max(info["temps"]))
             wind_avg = round(sum(info["winds"]) / len(info["winds"]), 1)
+            humidity_avg = round(sum([h for h in info["humidity"] if h is not None]) / len([h for h in info["humidity"] if h is not None]), 1) if info["humidity"] else None
+            pressure_avg = round(sum([p for p in info["pressure"] if p is not None]) / len([p for p in info["pressure"] if p is not None]), 1) if info["pressure"] else None
+            rain_sum = round(sum(info["rain"]), 1)
+            clouds_avg = round(sum(info["clouds"]) / len(info["clouds"]), 1) if info["clouds"] else None
             desc_main = max(set(info["descs"]), key=info["descs"].count)
-            msg += f"\n{date}: {desc_main.capitalize()}\nТемпература: от {t_min}°C до {t_max}°C\nВетер: {wind_avg} м/с\n"
+            msg += f"\n{weekday_ru}, {date_fmt}: {desc_main.capitalize()}\nТемпература: от {t_min}°C до {t_max}°C\nВетер: {wind_avg} м/с"
+            if humidity_avg is not None:
+                msg += f"\nВлажность: {humidity_avg}%"
+            if pressure_avg is not None:
+                msg += f"\nДавление: {pressure_avg} гПа"
+            if rain_sum > 0:
+                msg += f"\nОсадки: {rain_sum} мм"
+            if clouds_avg is not None:
+                msg += f"\nОблачность: {clouds_avg}%"
         return msg
     except Exception as e:
         return f"Ошибка: {e}"
