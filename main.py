@@ -349,12 +349,13 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
     state = user_states[user_id]
     # Обработка выбора города для прогноза (view_weather_mode)
-        if state.get("view_weather_mode") or state.get("choose_city_mode"):
+    if state.get("view_weather_mode"):
         city = update.message.text.strip().title() if update.message and update.message.text else ""
         if city in state.get("cities", []):
             weather_text = await get_weather_5days(city)
             wish = get_wish()
             state["view_weather_mode"] = False
+            state["choose_city_mode"] = False
             await update.message.reply_text(f"{weather_text}\n{wish}", reply_markup=main_keyboard)
             save_user_states()
             return
