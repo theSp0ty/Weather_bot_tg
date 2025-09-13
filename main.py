@@ -412,11 +412,9 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 state["timezones"] = {}
             state["timezones"][city] = timezone
             await update.message.reply_text(
-                f"✅ Город {city} добавлен! Часовой пояс: {timezone if timezone else 'не найден'}.\n\nХотите получать ежедневные уведомления по этому городу? Выберите его ниже или используйте команду 'Показать погоду 🌦️' для выбора.",
-                reply_markup=ReplyKeyboardMarkup(
-                    [[KeyboardButton(c)] for c in state["cities"]] + [[KeyboardButton('➕ Добавить город')], [KeyboardButton('Домой 🏠')]], resize_keyboard=True)
+                f"✅ Город {city} добавлен! Часовой пояс: {timezone if timezone else 'не найден'}.",
+                reply_markup=main_keyboard
             )
-            state["choose_city_mode"] = True
             save_user_states()
         else:
             await update.message.reply_text(f"⚠️ Город {city} уже есть в вашем списке.", reply_markup=main_keyboard)
