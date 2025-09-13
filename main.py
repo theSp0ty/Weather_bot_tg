@@ -61,7 +61,7 @@ main_keyboard = ReplyKeyboardMarkup([
     [KeyboardButton("Добавить город 🏙️"), KeyboardButton("Удалить город 🗑️")],
     [KeyboardButton("Мои города 📋"), KeyboardButton("Расписание уведомлений 🕒")],
     [KeyboardButton("Показать погоду 🌦️"), KeyboardButton("Посмотреть погоду 🌍"), KeyboardButton("Установить время ⏰")],
-    [KeyboardButton("Остановить уведомления ❌"), KeyboardButton("Помощь /help")],
+    [KeyboardButton("Остановить уведомления ❌"), KeyboardButton("Помощь /help 🆘")],
     [KeyboardButton("Домой 🏠")]
 ], resize_keyboard=True)
 
@@ -402,16 +402,17 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 await update.message.reply_text(
                     f"✅ Город {chosen_city} выбран для уведомлений!\n❗ Уведомления будут приходить только после выбора времени!\nВыберите время для получения ежедневных уведомлений или нажмите 'Ввести своё время':",
-                    reply_markup=ReplyKeyboardMarkup(
-                        [[KeyboardButton('Ввести своё время')]] +
-                        [
-                            [KeyboardButton('07:00'), KeyboardButton('07:30'), KeyboardButton('08:00')],
-                            [KeyboardButton('08:30'), KeyboardButton('09:00'), KeyboardButton('09:30')],
-                            [KeyboardButton('10:00'), KeyboardButton('10:30'), KeyboardButton('18:00')],
-                            [KeyboardButton('18:30'), KeyboardButton('19:00'), KeyboardButton('19:30')],
-                            [KeyboardButton('20:00'), KeyboardButton('20:30')]
-                        ], resize_keyboard=True)
-                )
+                        reply_markup=ReplyKeyboardMarkup(
+                            [[KeyboardButton('Ввести своё время')]] +
+                            [
+                                [KeyboardButton('07:00'), KeyboardButton('07:30'), KeyboardButton('08:00')],
+                                [KeyboardButton('08:30'), KeyboardButton('09:00'), KeyboardButton('09:30')],
+                                [KeyboardButton('10:00'), KeyboardButton('10:30'), KeyboardButton('18:00')],
+                                [KeyboardButton('18:30'), KeyboardButton('19:00'), KeyboardButton('19:30')],
+                                [KeyboardButton('20:00'), KeyboardButton('20:30')],
+                                [KeyboardButton('⬅️ Назад')]
+                            ], resize_keyboard=True)
+                    )
                 state["choose_time_mode"] = True
             return
         else:
@@ -428,6 +429,16 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             time_text = ""
         time_options = ['07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
                         '18:00', '18:30', '19:00', '19:30', '20:00', '20:30']
+            if time_text == '⬅️ Назад':
+                state["choose_time_mode"] = False
+                state["choose_city_mode"] = True
+                await update.message.reply_text(
+                    "Выберите город для уведомлений:",
+                    reply_markup=ReplyKeyboardMarkup(
+                        [[KeyboardButton(c)] for c in state["cities"]] + [[KeyboardButton('➕ Добавить город')]], resize_keyboard=True)
+                )
+                save_user_states()
+                return
         if time_text == 'Ввести своё время':
             state["custom_time_mode"] = True
             state["choose_time_mode"] = False
