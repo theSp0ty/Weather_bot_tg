@@ -61,8 +61,7 @@ main_keyboard = ReplyKeyboardMarkup([
     [KeyboardButton("Добавить город 🏙️"), KeyboardButton("Удалить город 🗑️")],
     [KeyboardButton("Мои города 📋"), KeyboardButton("Расписание уведомлений 🕒")],
     [KeyboardButton("Показать погоду 🌦️"), KeyboardButton("Посмотреть погоду"), KeyboardButton("Установить время ⏰")],
-    [KeyboardButton("Остановить уведомления ❌")],
-    [KeyboardButton("Помощь /help")]
+    [KeyboardButton("Остановить уведомления ❌"), KeyboardButton("Помощь /help")]
 ], resize_keyboard=True)
 
 scheduler = BackgroundScheduler()
@@ -523,7 +522,6 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Посмотреть погоду — выбрать город для прогноза\n"
         "• Установить время — выбрать время для уведомлений\n"
         "• Помощь — показать это сообщение\n"
-        "\nЕсли возникли вопросы — просто напишите!"
     )
     await update.message.reply_text(msg, reply_markup=main_keyboard)
 
