@@ -6,7 +6,7 @@ import requests
 import json
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, Bot
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -37,7 +37,7 @@ main_keyboard = ReplyKeyboardMarkup([
     [KeyboardButton("Показать погоду 🌦️"), KeyboardButton("Посмотреть погоду"), KeyboardButton("Установить время ⏰")]
 ], resize_keyboard=True)
 
-scheduler = AsyncIOScheduler()
+scheduler = BackgroundScheduler()
 
 def get_wish():
     wishes = [
@@ -358,7 +358,7 @@ async def view_weather_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Введите название города для прогноза:")
     save_user_states()
 
-async def main():
+def main():
     load_user_states()
     for user_id, state in user_states.items():
         send_time = state.get("send_time")
@@ -381,5 +381,4 @@ async def main():
     app.run_polling()
 
 if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main())
+    main()
