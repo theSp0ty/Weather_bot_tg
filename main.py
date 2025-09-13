@@ -308,7 +308,7 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             time_text = time_text.strip()
         else:
             time_text = ""
-        if re.match(r'^([01]\\d|2[0-3]):[0-5]\\d$', time_text):
+        if re.match(r'^([01]\d|2[0-3]):[0-5]\d$', time_text):
             state["send_time"] = time_text
             state["custom_time_mode"] = False
             await update.message.reply_text(
