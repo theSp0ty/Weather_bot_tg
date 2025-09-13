@@ -358,7 +358,7 @@ async def view_weather_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Введите название города для прогноза:")
     save_user_states()
 
-def main():
+async def main():
     load_user_states()
     for user_id, state in user_states.items():
         send_time = state.get("send_time")
@@ -381,4 +381,5 @@ def main():
     app.run_polling()
 
 if __name__ == '__main__':
-    main()
+    import asyncio
+    asyncio.run(main())
