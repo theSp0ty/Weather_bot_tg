@@ -429,16 +429,16 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             time_text = ""
         time_options = ['07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
                         '18:00', '18:30', '19:00', '19:30', '20:00', '20:30']
-            if time_text == '⬅️ Назад':
-                state["choose_time_mode"] = False
-                state["choose_city_mode"] = True
-                await update.message.reply_text(
-                    "Выберите город для уведомлений:",
-                    reply_markup=ReplyKeyboardMarkup(
-                        [[KeyboardButton(c)] for c in state["cities"]] + [[KeyboardButton('➕ Добавить город')]], resize_keyboard=True)
-                )
-                save_user_states()
-                return
+        if time_text == '⬅️ Назад':
+            state["choose_time_mode"] = False
+            state["choose_city_mode"] = True
+            await update.message.reply_text(
+                "Выберите город для уведомлений:",
+                reply_markup=ReplyKeyboardMarkup(
+                    [[KeyboardButton(c)] for c in state["cities"]] + [[KeyboardButton('➕ Добавить город')]], resize_keyboard=True)
+            )
+            save_user_states()
+            return
         if time_text == 'Ввести своё время':
             state["custom_time_mode"] = True
             state["choose_time_mode"] = False
