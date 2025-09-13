@@ -61,7 +61,8 @@ main_keyboard = ReplyKeyboardMarkup([
     [KeyboardButton("Добавить город 🏙️"), KeyboardButton("Удалить город 🗑️")],
     [KeyboardButton("Мои города 📋"), KeyboardButton("Расписание уведомлений 🕒")],
     [KeyboardButton("Показать погоду 🌦️"), KeyboardButton("Посмотреть погоду 🌍"), KeyboardButton("Установить время ⏰")],
-    [KeyboardButton("Остановить уведомления ❌"), KeyboardButton("Помощь /help")]
+    [KeyboardButton("Остановить уведомления ❌"), KeyboardButton("Помощь /help")],
+    [KeyboardButton("Домой 🏠")]
 ], resize_keyboard=True)
 
 scheduler = BackgroundScheduler()
@@ -258,12 +259,9 @@ async def add_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if user_id not in user_states:
         user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
-    for uid in user_states:
-        user_states[uid]["add_mode"] = False
     user_states[user_id]["add_mode"] = True
-    user_states[user_id]["remove_mode"] = False
-    user_states[user_id]["time_mode"] = False
-    await update.message.reply_text("Введите название города для добавления:")
+    await update.message.reply_text("Введите название города для добавления:",
+        reply_markup=ReplyKeyboardMarkup([[KeyboardButton("Домой 🏠")]], resize_keyboard=True))
 
 async def remove_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if update.effective_user else None
@@ -279,7 +277,8 @@ async def remove_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state["remove_mode"] = True
     state["add_mode"] = False
     state["time_mode"] = False
-    await update.message.reply_text(f"Ваши города: {', '.join(cities)}\nВведите название города для удаления:")
+    await update.message.reply_text(f"Ваши города: {', '.join(cities)}\nВведите название города для удаления:",
+        reply_markup=ReplyKeyboardMarkup([[KeyboardButton("Домой 🏠")]], resize_keyboard=True))
 
 async def set_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if update.effective_user else None
@@ -296,7 +295,7 @@ async def set_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         state["choose_time_city_mode"] = True
         await update.message.reply_text(
             "Выберите город для которого хотите установить время:",
-            reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in cities], resize_keyboard=True)
+            reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in cities] + [[KeyboardButton("Домой 🏠")]], resize_keyboard=True)
         )
         # После выбора города сразу предложить время (дизайн как выше)
         # Это реализовано в city_handler, но если город уже выбран, можно сразу показать клавиатуру времени
@@ -339,7 +338,7 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(
                 f"Город {chosen_city} не найден в вашем списке. Выберите город из списка:",
-                reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]], resize_keyboard=True)
+                reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]] + [[KeyboardButton("Домой 🏠")]], resize_keyboard=True)
             )
             return
     city = update.message.text
@@ -508,7 +507,7 @@ async def view_weather_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_user_states()
         return
     await update.message.reply_text("🌍 Выберите город из списка или введите название:",
-        reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in cities], resize_keyboard=True))
+        reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in cities] + [[KeyboardButton("Домой 🏠")]], resize_keyboard=True))
     save_user_states()
 
 async def show_cities(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -572,51 +571,40 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(msg, reply_markup=main_keyboard)
 
+async def go_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else None
+    if user_id is None or update.message is None:
+        return
+    # Сброс всех временных режимов
+    state = user_states.get(user_id, {})
+    for key in ["add_mode", "remove_mode", "time_mode", "choose_city_mode", "choose_time_mode", "custom_time_mode", "choose_time_city_mode", "view_weather_mode"]:
+        state[key] = False
+    await update.message.reply_text("Главное меню:", reply_markup=main_keyboard)
+    save_user_states()
+
 def main():
     load_user_states()
     print(f"[Main] user_states: {user_states}")
-    for user_id, state in user_states.items():
-        send_time = state.get("send_time")
-        notify_city = state.get("notify_city")
-        timezones = state.get("timezones", {})
-        timezone = timezones.get(notify_city, "Europe/Moscow")
-        print(f"[Main] user_id={user_id}, send_time={send_time}, notify_city={notify_city}")
-        if send_time:
-            hour, minute = map(int, send_time.split(":"))
-            job_id = f"weather_{user_id}"
-            print(f"[Main] Добавление задачи: user_id={user_id}, job_id={job_id}, time={send_time}, city={notify_city}")
-            scheduler.add_job(send_weather_job_sync, "cron", hour=hour, minute=minute, args=[user_id], id=job_id, replace_existing=True, timezone=timezone)
     scheduler.start()
     print("[Main] Scheduler запущен")
     print(f"[Main] Список задач: {scheduler.get_jobs()}")
-    
-    async def test_notify_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user_id = update.effective_user.id if update.effective_user else None
-        if user_id is None:
-            await update.message.reply_text("user_id не найден")
-            return
-        print(f"[TestNotify] Запуск вручную для user_id={user_id}")
-        try:
-            import asyncio
-            await send_weather_job(user_id)
-            await update.message.reply_text("Тестовое уведомление отправлено (если всё ок)")
-        except Exception as e:
-            await update.message.reply_text(f"Ошибка при отправке: {e}")
-            print(f"[TestNotify] Ошибка: {e}")
+
     if TELEGRAM_TOKEN is None:
         raise ValueError("TELEGRAM_TOKEN не задан в .env")
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('help', help_cmd))
-    app.add_handler(CommandHandler('test_notify', test_notify_handler))
-    app.add_handler(MessageHandler(filters.Regex("^Добавить город"), add_city))
-    app.add_handler(MessageHandler(filters.Regex("^Удалить город"), remove_city))
-    app.add_handler(MessageHandler(filters.Regex("^Мои города"), show_cities))
-    app.add_handler(MessageHandler(filters.Regex("^Расписание уведомлений"), show_schedule))
-    app.add_handler(MessageHandler(filters.Regex("^Остановить уведомления"), stop_notifications))
-    app.add_handler(MessageHandler(filters.Regex("^Показать погоду"), weather))
-    app.add_handler(MessageHandler(filters.Regex("^Посмотреть погоду"), view_weather_cmd))
-    app.add_handler(MessageHandler(filters.Regex("^Помощь|^/help"), help_cmd))
+    app.add_handler(MessageHandler(filters.Regex("^Добавить город 🏙️$"), add_city))
+    app.add_handler(MessageHandler(filters.Regex("^Удалить город 🗑️$"), remove_city))
+    app.add_handler(MessageHandler(filters.Regex("^Мои города 📋$"), show_cities))
+    app.add_handler(MessageHandler(filters.Regex("^Расписание уведомлений 🕒$"), show_schedule))
+    app.add_handler(MessageHandler(filters.Regex("^Остановить уведомления ❌$"), stop_notifications))
+    app.add_handler(MessageHandler(filters.Regex("^Показать погоду 🌦️$"), weather))
+    app.add_handler(MessageHandler(filters.Regex("^Посмотреть погоду 🌍$"), view_weather_cmd))
+    app.add_handler(MessageHandler(filters.Regex("^Установить время ⏰$"), set_time))
+    app.add_handler(MessageHandler(filters.Regex("^Помощь /help$|^/help$"), help_cmd))
+    app.add_handler(MessageHandler(filters.Regex("^Домой 🏠$"), go_home))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, city_handler))
     app.run_polling()
 
