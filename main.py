@@ -137,25 +137,35 @@ async def get_weather_brief(city):
         return f"Ошибка: {e}"
 
 async def send_weather_job(user_id):
-    state = user_states.get(user_id)
-    if not state or not state.get("cities"):
-        return
-    notify_city = state.get("notify_city")
-    if not notify_city:
-        return
-    weather_text = await get_weather_brief(notify_city)
-    wish = get_wish()
-    if TELEGRAM_TOKEN is None:
-        raise ValueError("TELEGRAM_TOKEN не задан в .env")
-    bot = Bot(token=TELEGRAM_TOKEN)
-    try:
-        await bot.send_message(chat_id=user_id, text=f"{weather_text}\n{wish}")
-    except Exception:
-        pass
+        state = user_states.get(user_id)
+        print(f"[Job] user_id={user_id}, state={state}")
+        if not state or not state.get("cities"):
+            print(f"[Job] Нет городов для user_id={user_id}")
+            return
+        notify_city = state.get("notify_city")
+        if not notify_city:
+            print(f"[Job] Нет выбранного города для уведомлений у user_id={user_id}")
+            return
+        print(f"[Job] Получение прогноза для города: {notify_city}")
+        weather_text = await get_weather_brief(notify_city)
+        wish = get_wish()
+        if TELEGRAM_TOKEN is None:
+            print("[Job] TELEGRAM_TOKEN не задан в .env")
+            raise ValueError("TELEGRAM_TOKEN не задан в .env")
+        bot = Bot(token=TELEGRAM_TOKEN)
+        try:
+            await bot.send_message(chat_id=user_id, text=f"{weather_text}\n{wish}")
+            print(f"[Job] Уведомление отправлено user_id={user_id}")
+        except Exception as e:
+            print(f"[Job] Ошибка при отправке сообщения: {e}")
 
 def send_weather_job_sync(user_id):
     import asyncio
-    asyncio.run(send_weather_job(user_id))
+    print(f"[Scheduler] Запуск уведомления для user_id={user_id}")
+    try:
+        asyncio.run(send_weather_job(user_id))
+    except Exception as e:
+        print(f"[Scheduler] Ошибка при отправке уведомления: {e}")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if update.effective_user else None
