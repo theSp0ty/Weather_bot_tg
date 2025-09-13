@@ -61,8 +61,7 @@ main_keyboard = ReplyKeyboardMarkup([
     [KeyboardButton("Добавить город 🏙️"), KeyboardButton("Удалить город 🗑️")],
     [KeyboardButton("Мои города 📋"), KeyboardButton("Расписание уведомлений 🕒")],
     [KeyboardButton("Показать погоду 🌦️"), KeyboardButton("Посмотреть погоду 🌍"), KeyboardButton("Установить время ⏰")],
-    [KeyboardButton("Остановить уведомления ❌"), KeyboardButton("Помощь /help 🆘")],
-    [KeyboardButton("Домой 🏠")]
+    [KeyboardButton("Остановить уведомления ❌"), KeyboardButton("Помощь 🆘")]
 ], resize_keyboard=True)
 
 scheduler = BackgroundScheduler()
