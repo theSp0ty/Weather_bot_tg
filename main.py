@@ -17,6 +17,9 @@ def update_user_job(user_id):
             scheduler.remove_job(job_id)
         except Exception:
             pass
+        # Предупреждение пользователю
+        # Найти update.message для user_id (через context не получится, поэтому только если есть активный update)
+        # Лучше отправлять предупреждение прямо в city_handler после выбора города, если нет времени
 import logging
 import os
 import random
@@ -337,13 +340,21 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             state["choose_city_mode"] = False
             save_user_states()
             update_user_job(user_id)
-            await update.message.reply_text(
-                f"✅ Город {chosen_city} выбран для уведомлений!\nТеперь выберите время для получения ежедневных уведомлений или нажмите 'Ввести своё время':",
-                reply_markup=ReplyKeyboardMarkup(
-                    [[KeyboardButton(t)] for t in ['07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
-                    '18:00', '18:30', '19:00', '19:30', '20:00', '20:30']] + [[KeyboardButton('Ввести своё время')]], resize_keyboard=True)
-            )
-            state["choose_time_mode"] = True
+            # Если нет времени, предупредить пользователя
+            if not state.get("send_time"):
+                await update.message.reply_text(
+                    "❗ Уведомления будут приходить только после выбора времени!\nВыберите время для получения ежедневных уведомлений или нажмите 'Ввести своё время':",
+                    reply_markup=ReplyKeyboardMarkup(
+                        [[KeyboardButton('Ввести своё время')]] +
+                        [
+                            [KeyboardButton('07:00'), KeyboardButton('07:30'), KeyboardButton('08:00')],
+                            [KeyboardButton('08:30'), KeyboardButton('09:00'), KeyboardButton('09:30')],
+                            [KeyboardButton('10:00'), KeyboardButton('10:30'), KeyboardButton('18:00')],
+                            [KeyboardButton('18:30'), KeyboardButton('19:00'), KeyboardButton('19:30')],
+                            [KeyboardButton('20:00'), KeyboardButton('20:30')]
+                        ], resize_keyboard=True)
+                )
+                state["choose_time_mode"] = True
             return
         else:
             await update.message.reply_text(
