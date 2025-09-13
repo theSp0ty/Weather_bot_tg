@@ -172,10 +172,7 @@ async def get_weather_5days(city):
         translate_url = "https://libretranslate.de/translate"
         payload = {"q": city, "source": "ru", "target": "en", "format": "text"}
         resp = requests.post(translate_url, json=payload, timeout=5)
-        if resp.status_code == 200:
-            city_en = resp.json().get("translatedText", city)
-        else:
-            city_en = city
+        city_en = resp.json().get("translatedText", city) if resp.status_code == 200 else city
     except Exception:
         city_en = city
     url = f"https://api.openweathermap.org/data/2.5/forecast?q={city_en}&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru"
@@ -183,136 +180,397 @@ async def get_weather_5days(city):
         response = requests.get(url)
         data = response.json()
         if data.get('cod') != "200":
-            return f"Не удалось получить прогноз на 5 дней для {city}."
-        forecasts = []
+            return f"Не удалось получить прогноз для {city}."
+        days = {}
         for item in data['list']:
-            dt = item['dt']
-            date = datetime.utcfromtimestamp(dt).strftime('%Y-%m-%d')
-            hour = int(item['dt_txt'][11:13])
-            if 6 <= hour <= 21:
-                day_forecast = {
-                    "date": date,
-                    "temp_max": item['main']['temp_max'],
-                    "temp_min": item['main']['temp_min'],
-                    "wind_speed": item['wind']['speed'],
-                    "rain": item.get('rain', {}).get('3h', 0)
-                }
-                forecasts.append(day_forecast)
-        if not forecasts:
-            return f"Нет данных о прогнозе на световой день для {city}."
-        result = [f"Прогноз погоды на 5 дней для {city}:"]
-        for f in forecasts:
-            date = f["date"]
-            temp_max = f["temp_max"]
-            temp_min = f["temp_min"]
-            wind_speed = f["wind_speed"]
-            rain = f["rain"]
-            rain_text = f"Дождь: {rain} мм" if rain > 0 else "Без дождя"
-            result.append(f"Дата: {date}, Макс. температура: {temp_max}°C, Мин. температура: {temp_min}°C, Ветер: {wind_speed} м/с, {rain_text}")
-        return "\n".join(result)
+            date = item['dt_txt'][:10]
+            temp = item['main']['temp']
+            desc = item['weather'][0]['description']
+            wind = item['wind']['speed']
+            if date not in days:
+                days[date] = {"temps": [], "descs": [], "winds": []}
+            days[date]["temps"].append(temp)
+            days[date]["descs"].append(desc)
+            days[date]["winds"].append(wind)
+        msg = f"Прогноз на 5 дней для {city}:\n"
+        for i, (date, info) in enumerate(days.items()):
+            if i >= 5:
+                break
+            t_min = int(min(info["temps"]))
+            t_max = int(max(info["temps"]))
+            wind_avg = round(sum(info["winds"]) / len(info["winds"]), 1)
+            desc_main = max(set(info["descs"]), key=info["descs"].count)
+            msg += f"\n{date}: {desc_main.capitalize()}\nТемпература: от {t_min}°C до {t_max}°C\nВетер: {wind_avg} м/с\n"
+        return msg
     except Exception as e:
         return f"Ошибка: {e}"
 
-async def send_weather_job_sync(user_id):
-    state = user_states.get(user_id)
-    if not state:
+async def send_weather_job(user_id):
+        state = user_states.get(user_id)
+        print(f"[Job] user_id={user_id}, state={state}")
+        if not state or not state.get("cities"):
+            print(f"[Job] Нет городов для user_id={user_id}")
+            return
+        notify_city = state.get("notify_city")
+        if not notify_city:
+            print(f"[Job] Нет выбранного города для уведомлений у user_id={user_id}")
+            return
+        print(f"[Job] Получение прогноза для города: {notify_city}")
+        weather_text = await get_weather_brief(notify_city)
+        wish = get_wish()
+        if TELEGRAM_TOKEN is None:
+            print("[Job] TELEGRAM_TOKEN не задан в .env")
+            raise ValueError("TELEGRAM_TOKEN не задан в .env")
+        bot = Bot(token=TELEGRAM_TOKEN)
+        try:
+            await bot.send_message(chat_id=user_id, text=f"{weather_text}\n{wish}")
+            print(f"[Job] Уведомление отправлено user_id={user_id}")
+        except Exception as e:
+            print(f"[Job] Ошибка при отправке сообщения: {e}")
+
+def send_weather_job_sync(user_id):
+    import asyncio
+    print(f"[Scheduler] Запуск уведомления для user_id={user_id}")
+    try:
+        print(f"[Scheduler] Перед запуском: user_states={user_states.get(user_id)}")
+        asyncio.run(send_weather_job(user_id))
+        print(f"[Scheduler] После запуска: user_states={user_states.get(user_id)}")
+    except Exception as e:
+        print(f"[Scheduler] Ошибка при отправке уведомления: {e}")
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else None
+    if user_id is None or update.message is None:
+        return
+    if user_id not in user_states:
+        user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
+    user_states[user_id]["remove_mode"] = False
+    user_states[user_id]["add_mode"] = False
+    user_states[user_id]["time_mode"] = False
+    text = "Привет! Я бот прогноза погоды и хорошего настроения. Выберите действие:"
+    if user_states[user_id].get("send_time") is None:
+        text += "\n\n❗ Для автоматических напоминаний о погоде установите время (кнопка \"Установить время ⏰\")."
+    await update.message.reply_text(text, reply_markup=main_keyboard)
+
+async def add_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else None
+    if user_id is None or update.message is None:
+        return
+    if user_id not in user_states:
+        user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
+    for uid in user_states:
+        user_states[uid]["add_mode"] = False
+    user_states[user_id]["add_mode"] = True
+    user_states[user_id]["remove_mode"] = False
+    user_states[user_id]["time_mode"] = False
+    await update.message.reply_text("Введите название города для добавления:")
+
+async def remove_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else None
+    if user_id is None or update.message is None:
+        return
+    if user_id not in user_states:
+        user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
+    state = user_states[user_id]
+    cities = state["cities"]
+    if not cities:
+        await update.message.reply_text("У вас нет городов для удаления.", reply_markup=main_keyboard)
+        return
+    state["remove_mode"] = True
+    state["add_mode"] = False
+    state["time_mode"] = False
+    await update.message.reply_text(f"Ваши города: {', '.join(cities)}\nВведите название города для удаления:")
+
+async def set_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else None
+    if user_id is None or update.message is None:
+        return
+    if user_id not in user_states:
+        user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
+    state = user_states[user_id]
+    state["time_mode"] = True
+    state["add_mode"] = False
+    state["remove_mode"] = False
+    cities = state["cities"]
+    if cities:
+        state["choose_time_city_mode"] = True
+        await update.message.reply_text(
+            "Выберите город для которого хотите установить время:",
+            reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in cities], resize_keyboard=True)
+        )
+        # После выбора города сразу предложить время (дизайн как выше)
+        # Это реализовано в city_handler, но если город уже выбран, можно сразу показать клавиатуру времени
+    else:
+        await update.message.reply_text("Сначала добавьте хотя бы один город.", reply_markup=main_keyboard)
+
+async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else None
+    if user_id is None or update.message is None:
+        return
+    if user_id not in user_states:
+        user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
+    state = user_states[user_id]
+    # Handle city selection for time setting
+    if state.get("choose_time_city_mode"):
+        if update.message and update.message.text:
+            chosen_city = update.message.text.strip().title()
+        else:
+            chosen_city = ""
+        if chosen_city in state["cities"]:
+            state["notify_city"] = chosen_city
+            state["choose_time_city_mode"] = False
+            # Предложить выбрать время сразу после выбора города
+            # Новый дизайн клавиатуры времени
+            await update.message.reply_text(
+                f"Вы выбрали город {chosen_city} для уведомлений.\nВыберите время для получения ежедневных уведомлений или нажмите 'Ввести своё время':",
+                reply_markup=ReplyKeyboardMarkup(
+                    [[KeyboardButton('Ввести своё время')]] +
+                    [
+                        [KeyboardButton('07:00'), KeyboardButton('07:30'), KeyboardButton('08:00')],
+                        [KeyboardButton('08:30'), KeyboardButton('09:00'), KeyboardButton('09:30')],
+                        [KeyboardButton('10:00'), KeyboardButton('10:30'), KeyboardButton('18:00')],
+                        [KeyboardButton('18:30'), KeyboardButton('19:00'), KeyboardButton('19:30')],
+                        [KeyboardButton('20:00'), KeyboardButton('20:30')]
+                    ], resize_keyboard=True)
+                )
+            state["choose_time_mode"] = True
+            save_user_states()
+            return
+        else:
+            await update.message.reply_text(
+                f"Город {chosen_city} не найден в вашем списке. Выберите город из списка:",
+                reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]], resize_keyboard=True)
+            )
+            return
+    city = update.message.text
+    if city is not None:
+        city = city.strip()
+        city = city.title()
+    else:
+        city = ""
+    if state.get("add_mode"):
+        state["add_mode"] = False
+        cities_lower = [c.lower() for c in state["cities"]]
+        if city.lower() not in cities_lower:
+            state["cities"].append(city)
+            timezone = await get_timezone_by_city(city)
+            if "timezones" not in state:
+                state["timezones"] = {}
+            state["timezones"][city] = timezone
+            await update.message.reply_text(
+                f"✅ Город {city} добавлен! Часовой пояс: {timezone if timezone else 'не найден'}.\n\nХотите получать ежедневные уведомления по этому городу? Выберите его ниже или используйте команду 'Показать погоду 🌦️' для выбора.",
+                reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]] + [[KeyboardButton('➕ Добавить город')]], resize_keyboard=True)
+            )
+            state["choose_city_mode"] = True
+            save_user_states()
+        else:
+            await update.message.reply_text(f"⚠️ Город {city} уже есть в вашем списке.", reply_markup=main_keyboard)
+        return
+    if state.get("remove_mode"):
+        state["remove_mode"] = False
+        if city in state["cities"]:
+            state["cities"].remove(city)
+            await update.message.reply_text(f"Город {city} удалён.", reply_markup=main_keyboard)
+            save_user_states()
+        else:
+            await update.message.reply_text(f"Город {city} не найден в вашем списке.", reply_markup=main_keyboard)
+        return
+    if state.get("choose_city_mode"):
+        chosen_city = update.message.text
+        if chosen_city is not None:
+            chosen_city = chosen_city.strip().title()
+        else:
+            chosen_city = ""
+        city_buttons = [[KeyboardButton(c)] for c in state["cities"]]
+        city_buttons.append([KeyboardButton('➕ Добавить город')])
+        if chosen_city.strip().lower() == '➕ добавить город'.lower():
+            state["add_mode"] = True
+            state["choose_city_mode"] = False
+            await update.message.reply_text("Введите название города для добавления:")
+            save_user_states()
+            return
+        if chosen_city in state["cities"]:
+            state["notify_city"] = chosen_city
+            state["choose_city_mode"] = False
+            save_user_states()
+            update_user_job(user_id)
+            send_time = state.get("send_time")
+            if send_time:
+                await update.message.reply_text(
+                    f"✅ Город {chosen_city} выбран для уведомлений!\nУведомления будут приходить каждый день в {send_time}.",
+                    reply_markup=main_keyboard
+                )
+            else:
+                await update.message.reply_text(
+                    f"✅ Город {chosen_city} выбран для уведомлений!\n❗ Уведомления будут приходить только после выбора времени!\nВыберите время для получения ежедневных уведомлений или нажмите 'Ввести своё время':",
+                    reply_markup=ReplyKeyboardMarkup(
+                        [[KeyboardButton('Ввести своё время')]] +
+                        [
+                            [KeyboardButton('07:00'), KeyboardButton('07:30'), KeyboardButton('08:00')],
+                            [KeyboardButton('08:30'), KeyboardButton('09:00'), KeyboardButton('09:30')],
+                            [KeyboardButton('10:00'), KeyboardButton('10:30'), KeyboardButton('18:00')],
+                            [KeyboardButton('18:30'), KeyboardButton('19:00'), KeyboardButton('19:30')],
+                            [KeyboardButton('20:00'), KeyboardButton('20:30')]
+                        ], resize_keyboard=True)
+                )
+                state["choose_time_mode"] = True
+            return
+        else:
+            await update.message.reply_text(
+                f"⚠️ Город {chosen_city} не найден в вашем списке.\nВыберите город или добавьте новый:",
+                reply_markup=ReplyKeyboardMarkup(city_buttons, resize_keyboard=True)
+            )
+        return
+    if state.get("choose_time_mode"):
+        time_text = update.message.text
+        if time_text is not None:
+            time_text = time_text.strip()
+        else:
+            time_text = ""
+        time_options = ['07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
+                        '18:00', '18:30', '19:00', '19:30', '20:00', '20:30']
+        if time_text == 'Ввести своё время':
+            state["custom_time_mode"] = True
+            state["choose_time_mode"] = False
+            await update.message.reply_text("Введите время в формате ЧЧ:ММ (например, 06:45):")
+            save_user_states()
+            return
+        if time_text in time_options:
+            state["send_time"] = time_text
+            state["choose_time_mode"] = False
+            save_user_states()
+            update_user_job(user_id)
+            await update.message.reply_text(
+                f"⏰ Уведомления по городу {state['notify_city']} будут приходить каждый день в {time_text}!",
+                reply_markup=main_keyboard
+            )
+            return
+    if state.get("custom_time_mode"):
+        time_text = update.message.text
+        if time_text is not None:
+            time_text = time_text.strip()
+        else:
+            time_text = ""
+        if re.match(r'^([01]\d|2[0-3]):[0-5]\d$', time_text):
+            state["send_time"] = time_text
+            state["custom_time_mode"] = False
+            save_user_states()
+            update_user_job(user_id)
+            await update.message.reply_text(
+                f"⏰ Уведомления по городу {state['notify_city']} будут приходить каждый день в {time_text}!",
+                reply_markup=main_keyboard
+            )
+        else:
+            await update.message.reply_text("Некорректный формат времени. Введите в формате ЧЧ:ММ, например 06:45.")
+        return
+
+async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else None
+    if user_id is None or update.message is None:
+        return
+    if user_id not in user_states:
+        user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
+    state = user_states[user_id]
+    cities = state["cities"]
+    if not cities:
+        await update.message.reply_text("Сначала добавьте хотя бы один город.", reply_markup=main_keyboard)
         return
     notify_city = state.get("notify_city")
-    if not notify_city:
+    if not notify_city or notify_city not in cities:
+        await update.message.reply_text(
+            "Выберите город для прогноза:",
+            reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in cities] + [[KeyboardButton('➕ Добавить город')]], resize_keyboard=True)
+        )
+        state["choose_city_mode"] = True
         return
-    chat_id = state.get("chat_id")
-    if not chat_id:
+    weather_text = await get_weather_brief(notify_city)
+    wish = get_wish()
+    await update.message.reply_text(f"{weather_text}\n{wish}", reply_markup=main_keyboard)
+
+async def view_weather_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else None
+    if user_id is None or update.message is None:
         return
-    text = await get_weather_brief(notify_city)
-    if text.startswith("Ошибка:"):
-        await send_message(chat_id, text)
-    else:
+    if user_id not in user_states:
+        user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
+    state = user_states[user_id]
+    state["view_weather_mode"] = True
+    cities = state.get("cities", [])
+    if not cities:
+        await update.message.reply_text("Сначала добавьте хотя бы один город.", reply_markup=main_keyboard)
+        save_user_states()
+        return
+    if len(cities) == 1:
+        city = cities[0]
+        weather_text = await get_weather_5days(city)
         wish = get_wish()
-        await send_message(chat_id, f"{text}\n\n{wish}")
-
-async def send_message(chat_id, text):
-    bot = Bot(token=TELEGRAM_TOKEN)
-    try:
-        await bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML')
-    except Exception as e:
-        print(f"Ошибка при отправке сообщения: {e}")
-
-async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
-    user_states[user_id] = {"chat_id": chat_id}
+        await update.message.reply_text(f"{weather_text}\n{wish}", reply_markup=main_keyboard)
+        save_user_states()
+        return
+    await update.message.reply_text("🌍 Выберите город из списка или введите название:",
+        reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in cities], resize_keyboard=True))
     save_user_states()
-    await update.message.reply_text("Добро пожаловать! Выберите действие:", reply_markup=main_keyboard)
 
-async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Помощь по боту:\n\n"
-                                      "1. Добавить город 🏙️ - добавляет город для получения прогноза погоды.\n"
-                                      "2. Удалить город 🗑️ - удаляет город из списка отслеживаемых.\n"
-                                      "3. Мои города 📋 - показывает список добавленных городов.\n"
-                                      "4. Расписание уведомлений 🕒 - показывает расписание уведомлений о погоде.\n"
-                                      "5. Показать погоду 🌦️ - показывает погоду на текущий момент.\n"
-                                      "6. Посмотреть погоду 🌍 - показывает погоду на 5 дней вперёд.\n"
-                                      "7. Установить время ⏰ - устанавливает время для ежедневных уведомлений о погоде.\n"
-                                      "8. Остановить уведомления ❌ - останавливает уведомления о погоде.\n"
-                                      "9. Помощь /help - показывает это сообщение.")
-
-async def add_city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
+async def show_cities(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else None
+    if user_id is None or update.message is None:
+        return
     state = user_states.get(user_id, {})
+    cities = state.get("cities", [])
     timezones = state.get("timezones", {})
-    if not timezones:
-        await update.message.reply_text("Сначала установите часовой пояс командой /set_timezone")
+    if not cities:
+        await update.message.reply_text("У вас пока нет добавленных городов.", reply_markup=main_keyboard)
         return
-    keyboard = ReplyKeyboardMarkup([[KeyboardButton(city) for city in timezones.keys()]], resize_keyboard=True)
-    await update.message.reply_text("Выберите город:", reply_markup=keyboard)
+    msg = "Ваши города:\n"
+    for c in cities:
+        tz = timezones.get(c, "?")
+        msg += f"• {c} (часовой пояс: {tz})\n"
+    await update.message.reply_text(msg, reply_markup=main_keyboard)
+    save_user_states()
 
-async def city_chosen_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
-    city = update.message.text
+async def show_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else None
+    if user_id is None or update.message is None:
+        return
     state = user_states.get(user_id, {})
+    notify_city = state.get("notify_city")
+    send_time = state.get("send_time")
     timezones = state.get("timezones", {})
-    if city not in timezones:
-        await update.message.reply_text("Город не найден. Пожалуйста, выберите из предложенных вариантов.")
-        return
-    timezone = timezones[city]
-    user_states[user_id] = {"chat_id": chat_id, "notify_city": city, "timezone": timezone}
+    if notify_city and send_time:
+        tz = timezones.get(notify_city, "?")
+        await update.message.reply_text(
+            f"Уведомления настроены:\nГород: {notify_city}\nВремя: {send_time}\nЧасовой пояс: {tz}",
+            reply_markup=main_keyboard
+        )
+    else:
+        await update.message.reply_text("Уведомления не настроены.", reply_markup=main_keyboard)
     save_user_states()
-    await update.message.reply_text(f"Город установлен: {city}. Теперь укажите время для уведомлений в формате ЧЧ:ММ.")
 
-async def set_time_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
+async def stop_notifications(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else None
+    if user_id is None or update.message is None:
+        return
     state = user_states.get(user_id, {})
-    if "notify_city" not in state:
-        await update.message.reply_text("Сначала добавьте город командой /add_city")
-        return
-    text = update.message.text
-    if not re.match(r"^\d{1,2}:\d{2}$", text):
-        await update.message.reply_text("Неверный формат времени. Пожалуйста, укажите время в формате ЧЧ:ММ.")
-        return
-    hour, minute = map(int, text.split(":"))
-    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
-        await update.message.reply_text("Некорректное время. Часы должны быть от 0 до 23, минуты от 0 до 59.")
-        return
-    user_states[user_id]["send_time"] = text
-    save_user_states()
+    state["send_time"] = None
     update_user_job(user_id)
-    await update.message.reply_text(f"Время уведомлений установлено на {text}.")
+    await update.message.reply_text("Уведомления остановлены. Вы можете включить их снова, выбрав город и время.", reply_markup=main_keyboard)
+    save_user_states()
 
-async def stop_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
-    user_states.pop(user_id, None)
-    try:
-        scheduler.remove_job(f"weather_{user_id}")
-    except Exception:
-        pass
-    await update.message.reply_text("Уведомления остановлены. Если захотите снова получить прогноз погоды, просто напишите мне.")
-
-async def echo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Я вас не понимаю. Пожалуйста, воспользуйтесь командой /help для получения списка доступных команд.")
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = (
+        "🌦️ Я бот прогноза погоды и напоминаний!\n\n"
+        "Доступные команды и кнопки:\n"
+        "• Добавить город — добавить новый город в список\n"
+        "• Удалить город — удалить город из списка\n"
+        "• Мои города — посмотреть список городов и их часовые пояса\n"
+        "• Расписание уведомлений — узнать, по какому городу и в какое время приходят уведомления\n"
+        "• Остановить уведомления — временно отключить напоминания\n"
+        "• Показать погоду — получить прогноз по выбранному городу\n"
+        "• Посмотреть погоду — выбрать город для прогноза\n"
+        "• Установить время — выбрать время для уведомлений\n"
+        "• Помощь — показать это сообщение\n"
+    )
+    await update.message.reply_text(msg, reply_markup=main_keyboard)
 
 def main():
     load_user_states()
@@ -331,25 +589,36 @@ def main():
     scheduler.start()
     print("[Main] Scheduler запущен")
     print(f"[Main] Список задач: {scheduler.get_jobs()}")
-
+    
+    async def test_notify_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user_id = update.effective_user.id if update.effective_user else None
+        if user_id is None:
+            await update.message.reply_text("user_id не найден")
+            return
+        print(f"[TestNotify] Запуск вручную для user_id={user_id}")
+        try:
+            import asyncio
+            await send_weather_job(user_id)
+            await update.message.reply_text("Тестовое уведомление отправлено (если всё ок)")
+        except Exception as e:
+            await update.message.reply_text(f"Ошибка при отправке: {e}")
+            print(f"[TestNotify] Ошибка: {e}")
     if TELEGRAM_TOKEN is None:
         raise ValueError("TELEGRAM_TOKEN не задан в .env")
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('help', help_cmd))
     app.add_handler(CommandHandler('test_notify', test_notify_handler))
-    app.add_handler(MessageHandler(filters.Regex("^Добавить город 🏙️$"), add_city))
-    app.add_handler(MessageHandler(filters.Regex("^Удалить город 🗑️$"), remove_city))
-    app.add_handler(MessageHandler(filters.Regex("^Мои города 📋$"), show_cities))
-    app.add_handler(MessageHandler(filters.Regex("^Расписание уведомлений 🕒$"), show_schedule))
-    app.add_handler(MessageHandler(filters.Regex("^Остановить уведомления ❌$"), stop_notifications))
-    app.add_handler(MessageHandler(filters.Regex("^Показать погоду 🌦️$"), weather))
-    app.add_handler(MessageHandler(filters.Regex("^Посмотреть погоду 🌍$"), view_weather_cmd))
-    app.add_handler(MessageHandler(filters.Regex("^Установить время ⏰$"), set_time))
-    app.add_handler(MessageHandler(filters.Regex("^Помощь /help$|^/help$"), help_cmd))
+    app.add_handler(MessageHandler(filters.Regex("^Добавить город"), add_city))
+    app.add_handler(MessageHandler(filters.Regex("^Удалить город"), remove_city))
+    app.add_handler(MessageHandler(filters.Regex("^Мои города"), show_cities))
+    app.add_handler(MessageHandler(filters.Regex("^Расписание уведомлений"), show_schedule))
+    app.add_handler(MessageHandler(filters.Regex("^Остановить уведомления"), stop_notifications))
+    app.add_handler(MessageHandler(filters.Regex("^Показать погоду"), weather))
+    app.add_handler(MessageHandler(filters.Regex("^Посмотреть погоду"), view_weather_cmd))
+    app.add_handler(MessageHandler(filters.Regex("^Помощь|^/help"), help_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, city_handler))
     app.run_polling()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
