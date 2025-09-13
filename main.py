@@ -425,26 +425,30 @@ def main():
             await update.message.reply_text("Введите название города для прогноза:")
         save_user_states()
 
-    load_user_states()
-    for user_id, state in user_states.items():
-        send_time = state.get("send_time")
-        timezone = state.get("timezone", "Europe/Moscow")
-        if send_time:
-            hour, minute = map(int, send_time.split(":"))
-            job_id = f"weather_{user_id}"
-            scheduler.add_job(send_weather_job, "cron", hour=hour, minute=minute, args=[user_id], id=job_id, replace_existing=True, timezone=timezone)
-    scheduler.start()
-    if TELEGRAM_TOKEN is None:
-        raise ValueError("TELEGRAM_TOKEN не задан в .env")
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler('start', start))
-    app.add_handler(MessageHandler(filters.Regex("^Добавить город"), add_city))
-    app.add_handler(MessageHandler(filters.Regex("^Удалить город"), remove_city))
-    app.add_handler(MessageHandler(filters.Regex("^Установить время"), set_time))
-    app.add_handler(MessageHandler(filters.Regex("^Показать погоду"), weather))
-    app.add_handler(MessageHandler(filters.Regex("^Посмотреть погоду"), view_weather_cmd))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, city_handler))
-    app.run_polling()
+    async def run():
+        load_user_states()
+        for user_id, state in user_states.items():
+            send_time = state.get("send_time")
+            timezone = state.get("timezone", "Europe/Moscow")
+            if send_time:
+                hour, minute = map(int, send_time.split(":"))
+                job_id = f"weather_{user_id}"
+                scheduler.add_job(send_weather_job, "cron", hour=hour, minute=minute, args=[user_id], id=job_id, replace_existing=True, timezone=timezone)
+        scheduler.start()
+        if TELEGRAM_TOKEN is None:
+            raise ValueError("TELEGRAM_TOKEN не задан в .env")
+        app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+        app.add_handler(CommandHandler('start', start))
+        app.add_handler(MessageHandler(filters.Regex("^Добавить город"), add_city))
+        app.add_handler(MessageHandler(filters.Regex("^Удалить город"), remove_city))
+        app.add_handler(MessageHandler(filters.Regex("^Установить время"), set_time))
+        app.add_handler(MessageHandler(filters.Regex("^Показать погоду"), weather))
+        app.add_handler(MessageHandler(filters.Regex("^Посмотреть погоду"), view_weather_cmd))
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, city_handler))
+        await app.run_polling()
+
+    import asyncio
+    asyncio.run(run())
 
 if __name__ == '__main__':
     main()
