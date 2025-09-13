@@ -137,6 +137,9 @@ async def get_weather_brief(city):
         return f"Ошибка: {e}"
 
 async def send_weather_job(user_id):
+def send_weather_job_sync(user_id):
+    import asyncio
+    asyncio.run(send_weather_job(user_id))
     state = user_states.get(user_id)
     if not state or not state.get("cities"):
         return
@@ -421,7 +424,7 @@ def main():
         if send_time:
             hour, minute = map(int, send_time.split(":"))
             job_id = f"weather_{user_id}"
-            scheduler.add_job(send_weather_job, "cron", hour=hour, minute=minute, args=[user_id], id=job_id, replace_existing=True, timezone=timezone)
+            scheduler.add_job(send_weather_job_sync, "cron", hour=hour, minute=minute, args=[user_id], id=job_id, replace_existing=True, timezone=timezone)
     scheduler.start()
     if TELEGRAM_TOKEN is None:
         raise ValueError("TELEGRAM_TOKEN не задан в .env")
