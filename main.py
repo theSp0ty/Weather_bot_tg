@@ -145,7 +145,11 @@ async def get_weather_brief(city):
                     rain_ranges.append((start, end))
                     start = end = h
             rain_ranges.append((start, end))
-            if len(rain_ranges) == 1 and rain_ranges[0][0] == rain_ranges[0][1]:
+            # Если дождь почти весь день (например, с 6 до 21)
+            day_start, day_end = "06:00", "21:00"
+            if len(rain_ranges) == 1 and rain_ranges[0][0] == day_start and rain_ranges[0][1] == day_end:
+                rain_text = "Дождь весь день"
+            elif len(rain_ranges) == 1 and rain_ranges[0][0] == rain_ranges[0][1]:
                 rain_text = f"Дождь ожидается в {rain_ranges[0][0]}"
             else:
                 rain_text = "Дождь:\n" + '\n'.join([f"• с {r[0]} по {r[1]}" if r[0] != r[1] else f"• в {r[0]}" for r in rain_ranges])
@@ -331,16 +335,15 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if chosen_city in state["cities"]:
             state["notify_city"] = chosen_city
             state["choose_city_mode"] = False
-            time_options = ['07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
-                            '18:00', '18:30', '19:00', '19:30', '20:00', '20:30']
-            keyboard = [[KeyboardButton(t)] for t in time_options]
-            keyboard.append([KeyboardButton('Ввести своё время')])
+            save_user_states()
+            update_user_job(user_id)
             await update.message.reply_text(
-                f"Вы выбрали город {chosen_city} для уведомлений.\nВыберите время для получения ежедневных уведомлений или нажмите 'Ввести своё время':",
-                reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                f"✅ Город {chosen_city} выбран для уведомлений!\nТеперь выберите время для получения ежедневных уведомлений или нажмите 'Ввести своё время':",
+                reply_markup=ReplyKeyboardMarkup(
+                    [[KeyboardButton(t)] for t in ['07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
+                    '18:00', '18:30', '19:00', '19:30', '20:00', '20:30']] + [[KeyboardButton('Ввести своё время')]], resize_keyboard=True)
             )
             state["choose_time_mode"] = True
-            save_user_states()
             return
         else:
             await update.message.reply_text(
