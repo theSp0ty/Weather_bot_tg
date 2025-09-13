@@ -59,7 +59,10 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 main_keyboard = ReplyKeyboardMarkup([
     [KeyboardButton("Добавить город 🏙️"), KeyboardButton("Удалить город 🗑️")],
-    [KeyboardButton("Показать погоду 🌦️"), KeyboardButton("Посмотреть погоду"), KeyboardButton("Установить время ⏰")]
+    [KeyboardButton("Мои города 📋"), KeyboardButton("Расписание уведомлений 🕒")],
+    [KeyboardButton("Показать погоду 🌦️"), KeyboardButton("Посмотреть погоду"), KeyboardButton("Установить время ⏰")],
+    [KeyboardButton("Остановить уведомления ❌")],
+    [KeyboardButton("Помощь /help")]
 ], resize_keyboard=True)
 
 scheduler = BackgroundScheduler()
@@ -462,6 +465,68 @@ async def view_weather_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("👀 Введите название города для прогноза:")
     save_user_states()
 
+async def show_cities(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else None
+    if user_id is None or update.message is None:
+        return
+    state = user_states.get(user_id, {})
+    cities = state.get("cities", [])
+    timezones = state.get("timezones", {})
+    if not cities:
+        await update.message.reply_text("У вас пока нет добавленных городов.", reply_markup=main_keyboard)
+        return
+    msg = "Ваши города:\n"
+    for c in cities:
+        tz = timezones.get(c, "?")
+        msg += f"• {c} (часовой пояс: {tz})\n"
+    await update.message.reply_text(msg, reply_markup=main_keyboard)
+    save_user_states()
+
+async def show_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else None
+    if user_id is None or update.message is None:
+        return
+    state = user_states.get(user_id, {})
+    notify_city = state.get("notify_city")
+    send_time = state.get("send_time")
+    timezones = state.get("timezones", {})
+    if notify_city and send_time:
+        tz = timezones.get(notify_city, "?")
+        await update.message.reply_text(
+            f"Уведомления настроены:\nГород: {notify_city}\nВремя: {send_time}\nЧасовой пояс: {tz}",
+            reply_markup=main_keyboard
+        )
+    else:
+        await update.message.reply_text("Уведомления не настроены.", reply_markup=main_keyboard)
+    save_user_states()
+
+async def stop_notifications(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else None
+    if user_id is None or update.message is None:
+        return
+    state = user_states.get(user_id, {})
+    state["send_time"] = None
+    update_user_job(user_id)
+    await update.message.reply_text("Уведомления остановлены. Вы можете включить их снова, выбрав город и время.", reply_markup=main_keyboard)
+    save_user_states()
+
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = (
+        "🌦️ Я бот прогноза погоды и напоминаний!\n\n"
+        "Доступные команды и кнопки:\n"
+        "• Добавить город — добавить новый город в список\n"
+        "• Удалить город — удалить город из списка\n"
+        "• Мои города — посмотреть список городов и их часовые пояса\n"
+        "• Расписание уведомлений — узнать, по какому городу и в какое время приходят уведомления\n"
+        "• Остановить уведомления — временно отключить напоминания\n"
+        "• Показать погоду — получить прогноз по выбранному городу\n"
+        "• Посмотреть погоду — выбрать город для прогноза\n"
+        "• Установить время — выбрать время для уведомлений\n"
+        "• Помощь — показать это сообщение\n"
+        "\nЕсли возникли вопросы — просто напишите!"
+    )
+    await update.message.reply_text(msg, reply_markup=main_keyboard)
+
 def main():
     load_user_states()
     print(f"[Main] user_states: {user_states}")
@@ -497,12 +562,16 @@ def main():
         raise ValueError("TELEGRAM_TOKEN не задан в .env")
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler('start', start))
+    app.add_handler(CommandHandler('help', help_cmd))
     app.add_handler(CommandHandler('test_notify', test_notify_handler))
     app.add_handler(MessageHandler(filters.Regex("^Добавить город"), add_city))
     app.add_handler(MessageHandler(filters.Regex("^Удалить город"), remove_city))
-    app.add_handler(MessageHandler(filters.Regex("^Установить время"), set_time))
+    app.add_handler(MessageHandler(filters.Regex("^Мои города"), show_cities))
+    app.add_handler(MessageHandler(filters.Regex("^Расписание уведомлений"), show_schedule))
+    app.add_handler(MessageHandler(filters.Regex("^Остановить уведомления"), stop_notifications))
     app.add_handler(MessageHandler(filters.Regex("^Показать погоду"), weather))
     app.add_handler(MessageHandler(filters.Regex("^Посмотреть погоду"), view_weather_cmd))
+    app.add_handler(MessageHandler(filters.Regex("^Помощь|^/help"), help_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, city_handler))
     app.run_polling()
 
