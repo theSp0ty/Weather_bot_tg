@@ -418,10 +418,26 @@ def main():
             scheduler.add_job(send_weather_job_sync, "cron", hour=hour, minute=minute, args=[user_id], id=job_id, replace_existing=True, timezone=timezone)
     scheduler.start()
     print("[Main] Scheduler запущен")
+    print(f"[Main] Список задач: {scheduler.get_jobs()}")
+    
+    async def test_notify_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user_id = update.effective_user.id if update.effective_user else None
+        if user_id is None:
+            await update.message.reply_text("user_id не найден")
+            return
+        print(f"[TestNotify] Запуск вручную для user_id={user_id}")
+        try:
+            import asyncio
+            await send_weather_job(user_id)
+            await update.message.reply_text("Тестовое уведомление отправлено (если всё ок)")
+        except Exception as e:
+            await update.message.reply_text(f"Ошибка при отправке: {e}")
+            print(f"[TestNotify] Ошибка: {e}")
     if TELEGRAM_TOKEN is None:
         raise ValueError("TELEGRAM_TOKEN не задан в .env")
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler('start', start))
+    app.add_handler(CommandHandler('test_notify', test_notify_handler))
     app.add_handler(MessageHandler(filters.Regex("^Добавить город"), add_city))
     app.add_handler(MessageHandler(filters.Regex("^Удалить город"), remove_city))
     app.add_handler(MessageHandler(filters.Regex("^Установить время"), set_time))
