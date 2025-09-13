@@ -588,11 +588,20 @@ async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     notify_city = state.get("notify_city")
     if not notify_city or notify_city not in cities:
+        # Сброс всех временных режимов, кроме view_weather_mode
+        for key in [
+            "add_mode", "remove_mode", "time_mode", "choose_city_mode", "choose_time_mode",
+            "custom_time_mode", "choose_time_city_mode", "notify_city"
+        ]:
+            if key in state:
+                state[key] = False
+        state["view_weather_mode"] = True
         await update.message.reply_text(
             "Выберите город для прогноза:",
             reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in cities] + [[KeyboardButton('➕ Добавить город')]], resize_keyboard=True)
         )
         state["choose_city_mode"] = True
+        save_user_states()
         return
     weather_text = await get_weather_brief(notify_city)
     wish = get_wish()
