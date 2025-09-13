@@ -342,6 +342,12 @@ async def set_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Сначала добавьте хотя бы один город.", reply_markup=main_keyboard)
 
 async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else None
+    if user_id is None or update.message is None:
+        return
+    if user_id not in user_states:
+        user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
+    state = user_states[user_id]
     # Обработка выбора города для прогноза (view_weather_mode)
     if state.get("view_weather_mode"):
         city = update.message.text.strip().title() if update.message and update.message.text else ""
@@ -664,7 +670,7 @@ def main():
     app.add_handler(MessageHandler(filters.Regex("^Показать погоду 🌦️$"), weather))
     app.add_handler(MessageHandler(filters.Regex("^Посмотреть погоду 🌍$"), view_weather_cmd))
     app.add_handler(MessageHandler(filters.Regex("^Установить время ⏰$"), set_time))
-    app.add_handler(MessageHandler(filters.Regex("^Помощь /help$|^/help$"), help_cmd))
+    app.add_handler(MessageHandler(filters.Regex("^Помощь /help$|^/help$|^Помощь 🆘$|^Помощь$"), help_cmd))
     app.add_handler(MessageHandler(filters.Regex("^Домой 🏠$"), go_home))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, city_handler))
     app.run_polling()
