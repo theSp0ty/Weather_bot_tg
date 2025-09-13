@@ -452,6 +452,13 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"✅ Город {city} добавлен! Часовой пояс: {timezone if timezone else 'не найден'}.",
                 reply_markup=main_keyboard
             )
+            # Сразу предлагаем выбрать город для уведомлений
+            state["choose_time_city_mode"] = True
+            await update.message.reply_text(
+                "Выберите город для уведомлений:",
+                reply_markup=ReplyKeyboardMarkup(
+                    [[KeyboardButton(c)] for c in state["cities"]] + [[KeyboardButton('Домой 🏠')]], resize_keyboard=True)
+            )
             save_user_states()
         else:
             await update.message.reply_text(f"⚠️ Город {city} уже есть в вашем списке.", reply_markup=main_keyboard)
