@@ -60,7 +60,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 main_keyboard = ReplyKeyboardMarkup([
     [KeyboardButton("Добавить город 🏙️"), KeyboardButton("Удалить город 🗑️")],
     [KeyboardButton("Мои города 📋"), KeyboardButton("Расписание уведомлений 🕒")],
-    [KeyboardButton("Посмотреть погоду 🌍"), KeyboardButton("Установить время ⏰")],
+    [KeyboardButton("Показать погоду 🌦️"), KeyboardButton("Посмотреть погоду 🌍"), KeyboardButton("Установить время ⏰")],
     [KeyboardButton("Остановить уведомления ❌"), KeyboardButton("Помощь 🆘")]
 ], resize_keyboard=True)
 
@@ -348,59 +348,6 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id not in user_states:
         user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
     state = user_states[user_id]
-    # Обработка выбора города для прогноза (view_weather_mode)
-    if state.get("view_weather_mode"):
-        city = update.message.text.strip().title() if update.message and update.message.text else ""
-        if city in state.get("cities", []):
-            weather_text = await get_weather_5days(city)
-            wish = get_wish()
-            state["view_weather_mode"] = False
-            state["choose_city_mode"] = False
-            await update.message.reply_text(f"{weather_text}\n{wish}", reply_markup=main_keyboard)
-            save_user_states()
-            return
-            if chosen_city in state["cities"]:
-                # Если режим просмотра прогноза активен, просто показать прогноз и сбросить оба режима
-                if state.get("view_weather_mode"):
-                    weather_text = await get_weather_5days(chosen_city)
-                    wish = get_wish()
-                    state["view_weather_mode"] = False
-                    state["choose_city_mode"] = False
-                    await update.message.reply_text(f"{weather_text}\n{wish}", reply_markup=main_keyboard)
-                    save_user_states()
-                    return
-                # Обычная логика выбора города для уведомлений
-                state["notify_city"] = chosen_city
-                state["choose_city_mode"] = False
-                save_user_states()
-                update_user_job(user_id)
-                send_time = state.get("send_time")
-                if send_time:
-                    await update.message.reply_text(
-                        f"✅ Город {chosen_city} выбран для уведомлений!\nУведомления будут приходить каждый день в {send_time}.",
-                        reply_markup=main_keyboard
-                    )
-                else:
-                    await update.message.reply_text(
-                        f"✅ Город {chosen_city} выбран для уведомлений!\n❗ Уведомления будут приходить только после выбора времени!\nВыберите время для получения ежедневных уведомлений или нажмите 'Ввести своё время':",
-                        reply_markup=ReplyKeyboardMarkup(
-                            [[KeyboardButton('Ввести своё время')]] +
-                            [
-                                [KeyboardButton('07:00'), KeyboardButton('07:30'), KeyboardButton('08:00')],
-                                [KeyboardButton('08:30'), KeyboardButton('09:00'), KeyboardButton('09:30')],
-                                [KeyboardButton('10:00'), KeyboardButton('10:30'), KeyboardButton('18:00')],
-                                [KeyboardButton('18:30'), KeyboardButton('19:00'), KeyboardButton('19:30')],
-                                [KeyboardButton('20:00'), KeyboardButton('20:30')]
-                            ], resize_keyboard=True)
-                    )
-                    state["choose_time_mode"] = True
-                return
-    user_id = update.effective_user.id if update.effective_user else None
-    if user_id is None or update.message is None:
-        return
-    if user_id not in user_states:
-        user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
-    state = user_states[user_id]
     # Handle city selection for time setting
     if state.get("choose_time_city_mode"):
         if update.message and update.message.text:
@@ -449,16 +396,10 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 state["timezones"] = {}
             state["timezones"][city] = timezone
             await update.message.reply_text(
-                f"✅ Город {city} добавлен! Часовой пояс: {timezone if timezone else 'не найден'}.",
-                reply_markup=main_keyboard
+                f"✅ Город {city} добавлен! Часовой пояс: {timezone if timezone else 'не найден'}.\n\nХотите получать ежедневные уведомления по этому городу? Выберите его ниже или используйте команду 'Показать погоду 🌦️' для выбора.",
+                reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]] + [[KeyboardButton('➕ Добавить город')]], resize_keyboard=True)
             )
-            # Сразу предлагаем выбрать город для уведомлений
-            state["choose_time_city_mode"] = True
-            await update.message.reply_text(
-                "Выберите город для уведомлений:",
-                reply_markup=ReplyKeyboardMarkup(
-                    [[KeyboardButton(c)] for c in state["cities"]] + [[KeyboardButton('➕ Добавить город')], [KeyboardButton('Домой 🏠')]], resize_keyboard=True)
-            )
+            state["choose_city_mode"] = True
             save_user_states()
         else:
             await update.message.reply_text(f"⚠️ Город {city} уже есть в вашем списке.", reply_markup=main_keyboard)
@@ -480,15 +421,6 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chosen_city = ""
         city_buttons = [[KeyboardButton(c)] for c in state["cities"]]
         city_buttons.append([KeyboardButton('➕ Добавить город')])
-        # Обработка кнопки '➕ Добавить город' в любом режиме выбора города
-        if 'добавить город' in chosen_city.lower():
-            state["add_mode"] = True
-            state["choose_city_mode"] = False
-            state["choose_time_city_mode"] = False
-            state["view_weather_mode"] = False
-            await update.message.reply_text("Введите название города для добавления:")
-            save_user_states()
-            return
         if chosen_city.strip().lower() == '➕ добавить город'.lower():
             state["add_mode"] = True
             state["choose_city_mode"] = False
@@ -496,16 +428,6 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_user_states()
             return
         if chosen_city in state["cities"]:
-            # Если режим просмотра прогноза активен, просто показать прогноз и сбросить оба режима
-            if state.get("view_weather_mode"):
-                weather_text = await get_weather_5days(chosen_city)
-                wish = get_wish()
-                state["view_weather_mode"] = False
-                state["choose_city_mode"] = False
-                await update.message.reply_text(f"{weather_text}\n{wish}", reply_markup=main_keyboard)
-                save_user_states()
-                return
-            # Обычная логика выбора города для уведомлений
             state["notify_city"] = chosen_city
             state["choose_city_mode"] = False
             save_user_states()
@@ -604,20 +526,11 @@ async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     notify_city = state.get("notify_city")
     if not notify_city or notify_city not in cities:
-        # Сброс всех временных режимов, кроме view_weather_mode
-        for key in [
-            "add_mode", "remove_mode", "time_mode", "choose_city_mode", "choose_time_mode",
-            "custom_time_mode", "choose_time_city_mode", "notify_city"
-        ]:
-            if key in state:
-                state[key] = False
-        state["view_weather_mode"] = True
         await update.message.reply_text(
             "Выберите город для прогноза:",
             reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in cities] + [[KeyboardButton('➕ Добавить город')]], resize_keyboard=True)
         )
         state["choose_city_mode"] = True
-        save_user_states()
         return
     weather_text = await get_weather_brief(notify_city)
     wish = get_wish()
@@ -702,7 +615,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Расписание уведомлений — узнать, по какому городу и в какое время приходят уведомления\n"
         "• Остановить уведомления — временно отключить напоминания\n"
         "• Показать погоду — получить прогноз по выбранному городу\n"
-        "• Посмотреть погоду — получить прогноз по выбранному городу на 5 дней\n"
+        "• Посмотреть погоду — выбрать город для прогноза\n"
         "• Установить время — выбрать время для уведомлений\n"
         "• Помощь — показать это сообщение\n"
     )
@@ -714,12 +627,8 @@ async def go_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     # Сброс всех временных режимов
     state = user_states.get(user_id, {})
-    for key in [
-        "add_mode", "remove_mode", "time_mode", "choose_city_mode", "choose_time_mode",
-        "custom_time_mode", "choose_time_city_mode", "view_weather_mode", "notify_city"
-    ]:
-        if key in state:
-            state[key] = False
+    for key in ["add_mode", "remove_mode", "time_mode", "choose_city_mode", "choose_time_mode", "custom_time_mode", "choose_time_city_mode", "view_weather_mode"]:
+        state[key] = False
     await update.message.reply_text("Главное меню:", reply_markup=main_keyboard)
     save_user_states()
 
@@ -741,9 +650,10 @@ def main():
     app.add_handler(MessageHandler(filters.Regex("^Мои города 📋$"), show_cities))
     app.add_handler(MessageHandler(filters.Regex("^Расписание уведомлений 🕒$"), show_schedule))
     app.add_handler(MessageHandler(filters.Regex("^Остановить уведомления ❌$"), stop_notifications))
+    app.add_handler(MessageHandler(filters.Regex("^Показать погоду 🌦️$"), weather))
     app.add_handler(MessageHandler(filters.Regex("^Посмотреть погоду 🌍$"), view_weather_cmd))
     app.add_handler(MessageHandler(filters.Regex("^Установить время ⏰$"), set_time))
-    app.add_handler(MessageHandler(filters.Regex("^Помощь /help$|^/help$|^Помощь 🆘$|^Помощь$"), help_cmd))
+    app.add_handler(MessageHandler(filters.Regex("^Помощь /help$|^/help$"), help_cmd))
     app.add_handler(MessageHandler(filters.Regex("^Домой 🏠$"), go_home))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, city_handler))
     app.run_polling()
