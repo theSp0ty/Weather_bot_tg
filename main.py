@@ -342,6 +342,16 @@ async def set_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Сначала добавьте хотя бы один город.", reply_markup=main_keyboard)
 
 async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Обработка выбора города для прогноза (view_weather_mode)
+    if state.get("view_weather_mode"):
+        city = update.message.text.strip().title() if update.message and update.message.text else ""
+        if city in state.get("cities", []):
+            weather_text = await get_weather_5days(city)
+            wish = get_wish()
+            state["view_weather_mode"] = False
+            await update.message.reply_text(f"{weather_text}\n{wish}", reply_markup=main_keyboard)
+            save_user_states()
+            return
     user_id = update.effective_user.id if update.effective_user else None
     if user_id is None or update.message is None:
         return
