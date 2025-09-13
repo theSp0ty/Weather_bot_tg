@@ -288,22 +288,22 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("Некорректный формат времени. Введите в формате ЧЧ:ММ, например 06:45.")
         return
-async def main():
-    async def view_weather_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user_id = update.effective_user.id if update.effective_user else None
-        if user_id is None or update.message is None:
-            return
-        if user_id not in user_states:
-            user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
-        state = user_states[user_id]
-        state["view_weather_mode"] = True
-        if state["cities"]:
-            await update.message.reply_text("Выберите город из списка или введите название:",
-                reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]], resize_keyboard=True))
-        else:
-            await update.message.reply_text("Введите название города для прогноза:")
-        save_user_states()
+async def view_weather_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else None
+    if user_id is None or update.message is None:
+        return
+    if user_id not in user_states:
+        user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
+    state = user_states[user_id]
+    state["view_weather_mode"] = True
+    if state["cities"]:
+        await update.message.reply_text("Выберите город из списка или введите название:",
+            reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]], resize_keyboard=True))
+    else:
+        await update.message.reply_text("Введите название города для прогноза:")
+    save_user_states()
 
+async def main():
     load_user_states()
     for user_id, state in user_states.items():
         send_time = state.get("send_time")
@@ -431,42 +431,6 @@ async def send_weather_job(user_id):
     except Exception:
         pass
 
-async def main():
-    async def view_weather_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user_id = update.effective_user.id if update.effective_user else None
-        if user_id is None or update.message is None:
-            return
-        if user_id not in user_states:
-            user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
-        state = user_states[user_id]
-        state["view_weather_mode"] = True
-        if state["cities"]:
-            await update.message.reply_text("Выберите город из списка или введите название:",
-                reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]], resize_keyboard=True))
-        else:
-            await update.message.reply_text("Введите название города для прогноза:")
-        save_user_states()
-
-    load_user_states()
-    for user_id, state in user_states.items():
-        send_time = state.get("send_time")
-        timezone = state.get("timezone", "Europe/Moscow")
-        if send_time:
-            hour, minute = map(int, send_time.split(":"))
-            job_id = f"weather_{user_id}"
-            scheduler.add_job(send_weather_job, "cron", hour=hour, minute=minute, args=[user_id], id=job_id, replace_existing=True, timezone=timezone)
-    scheduler.start()
-    if TELEGRAM_TOKEN is None:
-        raise ValueError("TELEGRAM_TOKEN не задан в .env")
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler('start', start))
-    app.add_handler(MessageHandler(filters.Regex("^Добавить город"), add_city))
-    app.add_handler(MessageHandler(filters.Regex("^Удалить город"), remove_city))
-    app.add_handler(MessageHandler(filters.Regex("^Установить время"), set_time))
-    app.add_handler(MessageHandler(filters.Regex("^Показать погоду"), weather))
-    app.add_handler(MessageHandler(filters.Regex("^Посмотреть погоду"), view_weather_cmd))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, city_handler))
-    await app.run_polling()
 
 if __name__ == '__main__':
     import asyncio
