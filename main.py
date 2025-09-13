@@ -316,21 +316,29 @@ async def echo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     load_user_states()
-    for user_id in list(user_states.keys()):
-        update_user_job(user_id)
-    application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    start_handler_obj = CommandHandler("start", start_handler)
-    help_handler_obj = CommandHandler("help", help_handler)
-    add_city_handler_obj = CommandHandler("add_city", add_city_handler)
-    set_time_handler_obj = CommandHandler("set_time", set_time_handler)
-    stop_handler_obj = CommandHandler("stop", stop_handler)
-    echo_handler_obj = MessageHandler(filters.TEXT & ~filters.COMMAND, echo_handler)
-    application.add_handler(start_handler_obj)
-    application.add_handler(help_handler_obj)
-    application.add_handler(add_city_handler_obj)
-    application.add_handler(set_time_handler_obj)
-    application.add_handler(stop_handler_obj)
-    application.add_handler(echo_handler_obj)
+    print(f"[Main] user_states: {user_states}")
+    for user_id, state in user_states.items():
+        send_time = state.get("send_time")
+        notify_city = state.get("notify_city")
+        timezones = state.get("timezones", {})
+        timezone = timezones.get(notify_city, "Europe/Moscow")
+        print(f"[Main] user_id={user_id}, send_time={send_time}, notify_city={notify_city}")
+        if send_time:
+            hour, minute = map(int, send_time.split(":"))
+            job_id = f"weather_{user_id}"
+            print(f"[Main] Добавление задачи: user_id={user_id}, job_id={job_id}, time={send_time}, city={notify_city}")
+            scheduler.add_job(send_weather_job_sync, "cron", hour=hour, minute=minute, args=[user_id], id=job_id, replace_existing=True, timezone=timezone)
+    scheduler.start()
+    print("[Main] Scheduler запущен")
+    print(f"[Main] Список задач: {scheduler.get_jobs()}")
+
+    if TELEGRAM_TOKEN is None:
+        raise ValueError("TELEGRAM_TOKEN не задан в .env")
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+
+    app.add_handler(CommandHandler('start', start))
+    app.add_handler(CommandHandler('help', help_cmd))
+    app.add_handler(CommandHandler('test_notify', test_notify_handler))
     app.add_handler(MessageHandler(filters.Regex("^Добавить город 🏙️$"), add_city))
     app.add_handler(MessageHandler(filters.Regex("^Удалить город 🗑️$"), remove_city))
     app.add_handler(MessageHandler(filters.Regex("^Мои города 📋$"), show_cities))
@@ -341,7 +349,7 @@ def main():
     app.add_handler(MessageHandler(filters.Regex("^Установить время ⏰$"), set_time))
     app.add_handler(MessageHandler(filters.Regex("^Помощь /help$|^/help$"), help_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, city_handler))
-    application.run_polling()
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
