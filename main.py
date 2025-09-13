@@ -60,7 +60,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 main_keyboard = ReplyKeyboardMarkup([
     [KeyboardButton("Добавить город 🏙️"), KeyboardButton("Удалить город 🗑️")],
     [KeyboardButton("Мои города 📋"), KeyboardButton("Расписание уведомлений 🕒")],
-    [KeyboardButton("Показать погоду 🌦️"), KeyboardButton("Посмотреть погоду"), KeyboardButton("Установить время ⏰")],
+    [KeyboardButton("Показать погоду 🌦️"), KeyboardButton("Посмотреть погоду 🌍"), KeyboardButton("Установить время ⏰")],
     [KeyboardButton("Остановить уведомления ❌"), KeyboardButton("Помощь /help")]
 ], resize_keyboard=True)
 
@@ -164,6 +164,44 @@ async def get_weather_brief(city):
         else:
             rain_text = "Без дождя"
         return f"{city}:\n{rain_text}\nВетер: {wind_avg} м/с\nТемпература: от {temp_min}°C до {temp_max}°C"
+    except Exception as e:
+        return f"Ошибка: {e}"
+
+async def get_weather_5days(city):
+    try:
+        translate_url = "https://libretranslate.de/translate"
+        payload = {"q": city, "source": "ru", "target": "en", "format": "text"}
+        resp = requests.post(translate_url, json=payload, timeout=5)
+        city_en = resp.json().get("translatedText", city) if resp.status_code == 200 else city
+    except Exception:
+        city_en = city
+    url = f"https://api.openweathermap.org/data/2.5/forecast?q={city_en}&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru"
+    try:
+        response = requests.get(url)
+        data = response.json()
+        if data.get('cod') != "200":
+            return f"Не удалось получить прогноз для {city}."
+        days = {}
+        for item in data['list']:
+            date = item['dt_txt'][:10]
+            temp = item['main']['temp']
+            desc = item['weather'][0]['description']
+            wind = item['wind']['speed']
+            if date not in days:
+                days[date] = {"temps": [], "descs": [], "winds": []}
+            days[date]["temps"].append(temp)
+            days[date]["descs"].append(desc)
+            days[date]["winds"].append(wind)
+        msg = f"Прогноз на 5 дней для {city}:\n"
+        for i, (date, info) in enumerate(days.items()):
+            if i >= 5:
+                break
+            t_min = int(min(info["temps"]))
+            t_max = int(max(info["temps"]))
+            wind_avg = round(sum(info["winds"]) / len(info["winds"]), 1)
+            desc_main = max(set(info["descs"]), key=info["descs"].count)
+            msg += f"\n{date}: {desc_main.capitalize()}\nТемпература: от {t_min}°C до {t_max}°C\nВетер: {wind_avg} м/с\n"
+        return msg
     except Exception as e:
         return f"Ошибка: {e}"
 
@@ -457,11 +495,20 @@ async def view_weather_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
     state = user_states[user_id]
     state["view_weather_mode"] = True
-    if state["cities"]:
-        await update.message.reply_text("👀 Выберите город из списка или введите название:",
-            reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]], resize_keyboard=True))
-    else:
-        await update.message.reply_text("👀 Введите название города для прогноза:")
+    cities = state.get("cities", [])
+    if not cities:
+        await update.message.reply_text("Сначала добавьте хотя бы один город.", reply_markup=main_keyboard)
+        save_user_states()
+        return
+    if len(cities) == 1:
+        city = cities[0]
+        weather_text = await get_weather_5days(city)
+        wish = get_wish()
+        await update.message.reply_text(f"{weather_text}\n{wish}", reply_markup=main_keyboard)
+        save_user_states()
+        return
+    await update.message.reply_text("🌍 Выберите город из списка или введите название:",
+        reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in cities], resize_keyboard=True))
     save_user_states()
 
 async def show_cities(update: Update, context: ContextTypes.DEFAULT_TYPE):
