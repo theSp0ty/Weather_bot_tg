@@ -480,6 +480,16 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_user_states()
             return
         if chosen_city in state["cities"]:
+            # Если режим просмотра прогноза активен, просто показать прогноз и сбросить оба режима
+            if state.get("view_weather_mode"):
+                weather_text = await get_weather_5days(chosen_city)
+                wish = get_wish()
+                state["view_weather_mode"] = False
+                state["choose_city_mode"] = False
+                await update.message.reply_text(f"{weather_text}\n{wish}", reply_markup=main_keyboard)
+                save_user_states()
+                return
+            # Обычная логика выбора города для уведомлений
             state["notify_city"] = chosen_city
             state["choose_city_mode"] = False
             save_user_states()
