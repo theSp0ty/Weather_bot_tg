@@ -367,6 +367,10 @@ async def main():
             hour, minute = map(int, send_time.split(":"))
             job_id = f"weather_{user_id}"
             scheduler.add_job(send_weather_job, "cron", hour=hour, minute=minute, args=[user_id], id=job_id, replace_existing=True, timezone=timezone)
+    # Получаем текущий event loop и передаем его в APScheduler
+    import asyncio
+    loop = asyncio.get_running_loop()
+    scheduler.configure(event_loop=loop)
     scheduler.start()
     if TELEGRAM_TOKEN is None:
         raise ValueError("TELEGRAM_TOKEN не задан в .env")
