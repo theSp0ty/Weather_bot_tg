@@ -7,8 +7,8 @@ import json
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, Bot
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-
 from dotenv import load_dotenv
+
 load_dotenv()
 
 USER_DATA_FILE = 'users.json'
@@ -33,46 +33,11 @@ def load_user_states():
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 main_keyboard = ReplyKeyboardMarkup([
-    [
-        KeyboardButton("Добавить город 🏙️"),
-        KeyboardButton("Удалить город 🗑️")
-    ],
-    [
-        KeyboardButton("Показать погоду 🌦️"),
-        KeyboardButton("Посмотреть погоду"),
-        KeyboardButton("Установить время ⏰")
-    ]
+    [KeyboardButton("Добавить город 🏙️"), KeyboardButton("Удалить город 🗑️")],
+    [KeyboardButton("Показать погоду 🌦️"), KeyboardButton("Посмотреть погоду"), KeyboardButton("Установить время ⏰")]
 ], resize_keyboard=True)
 
 scheduler = AsyncIOScheduler()
-
-async def get_weather(city):
-    try:
-        translate_url = "https://libretranslate.de/translate"
-        payload = {
-            "q": city,
-            "source": "ru",
-            "target": "en",
-            "format": "text"
-        }
-        resp = requests.post(translate_url, json=payload, timeout=5)
-        if resp.status_code == 200:
-            city_en = resp.json().get("translatedText", city)
-        else:
-            city_en = city
-    except Exception:
-        city_en = city
-    url = f"https://api.openweathermap.org/data/2.5/weather?q={city_en}&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru"
-    try:
-        response = requests.get(url)
-        data = response.json()
-        if data.get('cod') != 200:
-            return f"Не удалось получить погоду для {city}."
-        temp = data['main']['temp']
-        desc = data['weather'][0]['description']
-        return f"Погода в {city}: {desc}, {temp}°C."
-    except Exception as e:
-        return f"Ошибка: {e}"
 
 def get_wish():
     wishes = [
@@ -120,6 +85,73 @@ async def get_timezone_by_city(city):
             return None
     except Exception:
         return None
+
+async def get_weather_brief(city):
+    try:
+        translate_url = "https://libretranslate.de/translate"
+        payload = {"q": city, "source": "ru", "target": "en", "format": "text"}
+        resp = requests.post(translate_url, json=payload, timeout=5)
+        city_en = resp.json().get("translatedText", city) if resp.status_code == 200 else city
+    except Exception:
+        city_en = city
+    url = f"https://api.openweathermap.org/data/2.5/forecast?q={city_en}&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru"
+    try:
+        response = requests.get(url)
+        data = response.json()
+        if data.get('cod') != "200":
+            return f"Не удалось получить прогноз для {city}."
+        temps, winds, rain_hours = [], [], []
+        for item in data['list']:
+            hour = int(item['dt_txt'][11:13])
+            if 6 <= hour <= 21:
+                temps.append(item['main']['temp'])
+                winds.append(item['wind']['speed'])
+                if 'rain' in item and item['rain'].get('3h', 0) > 0:
+                    rain_hours.append(item['dt_txt'][11:16])
+        if not temps:
+            return f"Нет данных о прогнозе на световой день для {city}."
+        temp_max = max(temps)
+        temp_min = min(temps)
+        wind_avg = round(sum(winds) / len(winds), 1)
+        rain_hours = sorted(set(rain_hours), key=lambda x: x)
+        rain_ranges = []
+        if rain_hours:
+            start = end = rain_hours[0]
+            for h in rain_hours[1:]:
+                prev_hour = int(end[:2])
+                curr_hour = int(h[:2])
+                if curr_hour == prev_hour + 3:
+                    end = h
+                else:
+                    rain_ranges.append((start, end))
+                    start = end = h
+            rain_ranges.append((start, end))
+            if len(rain_ranges) == 1 and rain_ranges[0][0] == rain_ranges[0][1]:
+                rain_text = f"Дождь ожидается в {rain_ranges[0][0]}"
+            else:
+                rain_text = "Дождь:\n" + '\n'.join([f"• с {r[0]} по {r[1]}" if r[0] != r[1] else f"• в {r[0]}" for r in rain_ranges])
+        else:
+            rain_text = "Без дождя"
+        return f"{city}:\n{rain_text}\nВетер: {wind_avg} м/с\nТемпература: от {temp_min}°C до {temp_max}°C"
+    except Exception as e:
+        return f"Ошибка: {e}"
+
+async def send_weather_job(user_id):
+    state = user_states.get(user_id)
+    if not state or not state.get("cities"):
+        return
+    notify_city = state.get("notify_city")
+    if not notify_city:
+        return
+    weather_text = await get_weather_brief(notify_city)
+    wish = get_wish()
+    if TELEGRAM_TOKEN is None:
+        raise ValueError("TELEGRAM_TOKEN не задан в .env")
+    bot = Bot(token=TELEGRAM_TOKEN)
+    try:
+        await bot.send_message(chat_id=user_id, text=f"{weather_text}\n{wish}")
+    except Exception:
+        pass
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if update.effective_user else None
@@ -176,15 +208,18 @@ async def set_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Введите время для получения прогноза (например, 09:00):")
 
 async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # --- Город/время/уведомления обработка ---
-    # 1. Добавление города
+    user_id = update.effective_user.id if update.effective_user else None
+    if user_id is None or update.message is None:
+        return
+    if user_id not in user_states:
+        user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
+    state = user_states[user_id]
     city = update.message.text
     if city is not None:
         city = city.strip()
         city = city.title()
     else:
         city = ""
-    # Добавление города
     if state.get("add_mode"):
         state["add_mode"] = False
         cities_lower = [c.lower() for c in state["cities"]]
@@ -201,7 +236,6 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(f"⚠️ Город {city} уже есть в вашем списке.", reply_markup=main_keyboard)
         return
-    # Удаление города
     if state.get("remove_mode"):
         state["remove_mode"] = False
         if city in state["cities"]:
@@ -211,7 +245,6 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(f"Город {city} не найден в вашем списке.", reply_markup=main_keyboard)
         return
-    # Выбор города для уведомлений
     if state.get("choose_city_mode"):
         chosen_city = update.message.text
         if chosen_city is not None:
@@ -246,7 +279,6 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=ReplyKeyboardMarkup(city_buttons, resize_keyboard=True)
             )
         return
-    # Выбор времени для уведомлений
     if state.get("choose_time_mode"):
         time_text = update.message.text
         if time_text is not None:
@@ -270,14 +302,13 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             save_user_states()
             return
-    # Ввод своего времени
     if state.get("custom_time_mode"):
         time_text = update.message.text
         if time_text is not None:
             time_text = time_text.strip()
         else:
             time_text = ""
-        if re.match(r'^([01]\d|2[0-3]):[0-5]\d$', time_text):
+        if re.match(r'^([01]\\d|2[0-3]):[0-5]\\d$', time_text):
             state["send_time"] = time_text
             state["custom_time_mode"] = False
             await update.message.reply_text(
@@ -288,6 +319,30 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("Некорректный формат времени. Введите в формате ЧЧ:ММ, например 06:45.")
         return
+
+async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else None
+    if user_id is None or update.message is None:
+        return
+    if user_id not in user_states:
+        user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
+    state = user_states[user_id]
+    cities = state["cities"]
+    if not cities:
+        await update.message.reply_text("Сначала добавьте хотя бы один город.", reply_markup=main_keyboard)
+        return
+    notify_city = state.get("notify_city")
+    if not notify_city or notify_city not in cities:
+        await update.message.reply_text(
+            "Выберите город для прогноза:",
+            reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in cities] + [[KeyboardButton('➕ Добавить город')]], resize_keyboard=True)
+        )
+        state["choose_city_mode"] = True
+        return
+    weather_text = await get_weather_brief(notify_city)
+    wish = get_wish()
+    await update.message.reply_text(f"{weather_text}\n{wish}", reply_markup=main_keyboard)
+
 async def view_weather_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if update.effective_user else None
     if user_id is None or update.message is None:
@@ -324,113 +379,6 @@ async def main():
     app.add_handler(MessageHandler(filters.Regex("^Посмотреть погоду"), view_weather_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, city_handler))
     app.run_polling()
-
-if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main())
-
-async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id if update.effective_user else None
-    if user_id is None or update.message is None:
-        return
-    if user_id not in user_states:
-        user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
-    state = user_states[user_id]
-    cities = state["cities"]
-    if not cities:
-        await update.message.reply_text("Сначала добавьте хотя бы один город.", reply_markup=main_keyboard)
-        return
-    notify_city = state.get("notify_city")
-    if not notify_city or notify_city not in cities:
-        await update.message.reply_text(
-            "Выберите город для прогноза:",
-            reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in cities] + [[KeyboardButton('➕ Добавить город')]], resize_keyboard=True)
-        )
-        state["choose_city_mode"] = True
-        return
-    weather_text = await get_weather_brief(notify_city)
-    wish = get_wish()
-    await update.message.reply_text(f"{weather_text}\n{wish}", reply_markup=main_keyboard)
-
-async def get_weather_brief(city):
-    try:
-        translate_url = "https://libretranslate.de/translate"
-        payload = {
-            "q": city,
-            "source": "ru",
-            "target": "en",
-            "format": "text"
-        }
-        resp = requests.post(translate_url, json=payload, timeout=5)
-        if resp.status_code == 200:
-            city_en = resp.json().get("translatedText", city)
-        else:
-            city_en = city
-    except Exception:
-        city_en = city
-    url = f"https://api.openweathermap.org/data/2.5/forecast?q={city_en}&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru"
-    try:
-        response = requests.get(url)
-        data = response.json()
-        if data.get('cod') != "200":
-            return f"Не удалось получить прогноз для {city}."
-        temps = []
-        winds = []
-        rain_hours = []
-        for item in data['list']:
-            hour = int(item['dt_txt'][11:13])
-            if 6 <= hour <= 21:
-                temps.append(item['main']['temp'])
-                winds.append(item['wind']['speed'])
-                if 'rain' in item and item['rain'].get('3h', 0) > 0:
-                    rain_hours.append(item['dt_txt'][11:16])  # формат HH:MM
-        if not temps:
-            return f"Нет данных о прогнозе на световой день для {city}."
-        temp_max = max(temps)
-        temp_min = min(temps)
-        wind_avg = round(sum(winds) / len(winds), 1)
-        # Группировка дождевых интервалов и удаление дублей
-        rain_hours = sorted(set(rain_hours), key=lambda x: x)
-        rain_ranges = []
-        if rain_hours:
-            start = end = rain_hours[0]
-            for h in rain_hours[1:]:
-                prev_hour = int(end[:2])
-                curr_hour = int(h[:2])
-                if curr_hour == prev_hour + 3:
-                    end = h
-                else:
-                    rain_ranges.append((start, end))
-                    start = end = h
-            rain_ranges.append((start, end))
-            # Формируем текст
-            if len(rain_ranges) == 1 and rain_ranges[0][0] == rain_ranges[0][1]:
-                rain_text = f"Дождь ожидается в {rain_ranges[0][0]}"
-            else:
-                rain_text = "Дождь:\n" + '\n'.join([f"• с {r[0]} по {r[1]}" if r[0] != r[1] else f"• в {r[0]}" for r in rain_ranges])
-        else:
-            rain_text = "Без дождя"
-        return f"{city}:\n{rain_text}\nВетер: {wind_avg} м/с\nТемпература: от {temp_min}°C до {temp_max}°C"
-    except Exception as e:
-        return f"Ошибка: {e}"
-
-async def send_weather_job(user_id):
-    state = user_states.get(user_id)
-    if not state or not state.get("cities"):
-        return
-    notify_city = state.get("notify_city")
-    if not notify_city:
-        return
-    weather_text = await get_weather_brief(notify_city)
-    wish = get_wish()
-    if TELEGRAM_TOKEN is None:
-        raise ValueError("TELEGRAM_TOKEN не задан в .env")
-    bot = Bot(token=TELEGRAM_TOKEN)
-    try:
-        await bot.send_message(chat_id=user_id, text=f"{weather_text}\n{wish}")
-    except Exception:
-        pass
-
 
 if __name__ == '__main__':
     import asyncio
