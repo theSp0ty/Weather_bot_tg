@@ -349,7 +349,7 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
     state = user_states[user_id]
     # Обработка выбора города для прогноза (view_weather_mode)
-    if state.get("view_weather_mode"):
+        if state.get("view_weather_mode") or state.get("choose_city_mode"):
         city = update.message.text.strip().title() if update.message and update.message.text else ""
         if city in state.get("cities", []):
             weather_text = await get_weather_5days(city)
@@ -358,6 +358,42 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"{weather_text}\n{wish}", reply_markup=main_keyboard)
             save_user_states()
             return
+            if chosen_city in state["cities"]:
+                # Если режим просмотра прогноза активен, просто показать прогноз и сбросить оба режима
+                if state.get("view_weather_mode"):
+                    weather_text = await get_weather_5days(chosen_city)
+                    wish = get_wish()
+                    state["view_weather_mode"] = False
+                    state["choose_city_mode"] = False
+                    await update.message.reply_text(f"{weather_text}\n{wish}", reply_markup=main_keyboard)
+                    save_user_states()
+                    return
+                # Обычная логика выбора города для уведомлений
+                state["notify_city"] = chosen_city
+                state["choose_city_mode"] = False
+                save_user_states()
+                update_user_job(user_id)
+                send_time = state.get("send_time")
+                if send_time:
+                    await update.message.reply_text(
+                        f"✅ Город {chosen_city} выбран для уведомлений!\nУведомления будут приходить каждый день в {send_time}.",
+                        reply_markup=main_keyboard
+                    )
+                else:
+                    await update.message.reply_text(
+                        f"✅ Город {chosen_city} выбран для уведомлений!\n❗ Уведомления будут приходить только после выбора времени!\nВыберите время для получения ежедневных уведомлений или нажмите 'Ввести своё время':",
+                        reply_markup=ReplyKeyboardMarkup(
+                            [[KeyboardButton('Ввести своё время')]] +
+                            [
+                                [KeyboardButton('07:00'), KeyboardButton('07:30'), KeyboardButton('08:00')],
+                                [KeyboardButton('08:30'), KeyboardButton('09:00'), KeyboardButton('09:30')],
+                                [KeyboardButton('10:00'), KeyboardButton('10:30'), KeyboardButton('18:00')],
+                                [KeyboardButton('18:30'), KeyboardButton('19:00'), KeyboardButton('19:30')],
+                                [KeyboardButton('20:00'), KeyboardButton('20:30')]
+                            ], resize_keyboard=True)
+                    )
+                    state["choose_time_mode"] = True
+                return
     user_id = update.effective_user.id if update.effective_user else None
     if user_id is None or update.message is None:
         return
