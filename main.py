@@ -378,7 +378,7 @@ async def main():
     app.add_handler(MessageHandler(filters.Regex("^Показать погоду"), weather))
     app.add_handler(MessageHandler(filters.Regex("^Посмотреть погоду"), view_weather_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, city_handler))
-    await app.run_polling()
+    app.run_polling()
 
 if __name__ == '__main__':
     import asyncio
