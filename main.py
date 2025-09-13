@@ -202,38 +202,45 @@ async def get_weather_5days(city):
             days[date]["rain"].append(rain)
             days[date]["clouds"].append(clouds)
         msg = f"Прогноз на 5 дней для {city}:\n"
+        weather_emojis = {
+            "ясно": "☀️",
+            "облачно": "☁️",
+            "дождь": "🌧️",
+            "небольшой дождь": "🌦️",
+            "гроза": "⛈️",
+            "снег": "❄️",
+            "переменная облачность": "🌤️",
+            "облачно с прояснениями": "🌤️",
+            "туман": "🌫️"
+        }
         for i, (date, info) in enumerate(days.items()):
             if i >= 5:
                 break
             dt = datetime.datetime.strptime(date, "%Y-%m-%d")
             weekday = dt.strftime("%A")
             weekday_ru = {
-                "Monday": "Понедельник",
-                "Tuesday": "Вторник",
-                "Wednesday": "Среда",
-                "Thursday": "Четверг",
-                "Friday": "Пятница",
-                "Saturday": "Суббота",
-                "Sunday": "Воскресенье"
+                "Monday": "Пн",
+                "Tuesday": "Вт",
+                "Wednesday": "Ср",
+                "Thursday": "Чт",
+                "Friday": "Пт",
+                "Saturday": "Сб",
+                "Sunday": "Вс"
             }[weekday]
             date_fmt = dt.strftime("%d.%m.%Y")
             t_min = int(min(info["temps"]))
             t_max = int(max(info["temps"]))
             wind_avg = round(sum(info["winds"]) / len(info["winds"]), 1)
-            humidity_avg = round(sum([h for h in info["humidity"] if h is not None]) / len([h for h in info["humidity"] if h is not None]), 1) if info["humidity"] else None
-            pressure_avg = round(sum([p for p in info["pressure"] if p is not None]) / len([p for p in info["pressure"] if p is not None]), 1) if info["pressure"] else None
             rain_sum = round(sum(info["rain"]), 1)
-            clouds_avg = round(sum(info["clouds"]) / len(info["clouds"]), 1) if info["clouds"] else None
-            desc_main = max(set(info["descs"]), key=info["descs"].count)
-            msg += f"\n{weekday_ru}, {date_fmt}: {desc_main.capitalize()}\nТемпература: от {t_min}°C до {t_max}°C\nВетер: {wind_avg} м/с"
-            if humidity_avg is not None:
-                msg += f"\nВлажность: {humidity_avg}%"
-            if pressure_avg is not None:
-                msg += f"\nДавление: {pressure_avg} гПа"
+            desc_main = max(set(info["descs"]), key=info["descs"].count).capitalize()
+            emoji = ""
+            for k, v in weather_emojis.items():
+                if k in desc_main.lower():
+                    emoji = v
+                    break
+            msg += f"\n{weekday_ru} {date_fmt} {emoji} {desc_main}: {t_min}…{t_max}°C, 💨 {wind_avg} м/с"
             if rain_sum > 0:
-                msg += f"\nОсадки: {rain_sum} мм"
-            if clouds_avg is not None:
-                msg += f"\nОблачность: {clouds_avg}%"
+                msg += f", 🌧️ {rain_sum} мм"
         return msg
     except Exception as e:
         return f"Ошибка: {e}"
