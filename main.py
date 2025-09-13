@@ -5,7 +5,8 @@ def update_user_job(user_id):
         return
     send_time = state.get("send_time")
     notify_city = state.get("notify_city")
-    timezone = state.get("timezone", "Europe/Moscow")
+    timezones = state.get("timezones", {})
+    timezone = timezones.get(notify_city, "Europe/Moscow")
     job_id = f"weather_{user_id}"
     print(f"[JobUpdate] user_id={user_id}, send_time={send_time}, notify_city={notify_city}, timezone={timezone}")
     if send_time and notify_city:
@@ -313,7 +314,9 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if city.lower() not in cities_lower:
             state["cities"].append(city)
             timezone = await get_timezone_by_city(city)
-            state["timezone"] = timezone
+            if "timezones" not in state:
+                state["timezones"] = {}
+            state["timezones"][city] = timezone
             await update.message.reply_text(
                 f"✅ Город {city} добавлен! Часовой пояс: {timezone if timezone else 'не найден'}.\n\nХотите получать ежедневные уведомления по этому городу? Выберите его ниже или используйте команду 'Показать погоду 🌦️' для выбора.",
                 reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]] + [[KeyboardButton('➕ Добавить город')]], resize_keyboard=True)
@@ -464,8 +467,9 @@ def main():
     print(f"[Main] user_states: {user_states}")
     for user_id, state in user_states.items():
         send_time = state.get("send_time")
-        timezone = state.get("timezone", "Europe/Moscow")
         notify_city = state.get("notify_city")
+        timezones = state.get("timezones", {})
+        timezone = timezones.get(notify_city, "Europe/Moscow")
         print(f"[Main] user_id={user_id}, send_time={send_time}, notify_city={notify_city}")
         if send_time:
             hour, minute = map(int, send_time.split(":"))
