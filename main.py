@@ -6,7 +6,7 @@ import requests
 import json
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, Bot
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -44,7 +44,7 @@ main_keyboard = ReplyKeyboardMarkup([
     ]
 ], resize_keyboard=True)
 
-scheduler = BackgroundScheduler()
+scheduler = AsyncIOScheduler()
 
 async def get_weather(city):
     try:
@@ -367,33 +367,28 @@ async def get_weather_brief(city):
         temp_max = max(temps)
         temp_min = min(temps)
         wind_avg = round(sum(winds) / len(winds), 1)
+        # Группировка дождевых интервалов и удаление дублей
+        rain_hours = sorted(set(rain_hours), key=lambda x: x)
+        rain_ranges = []
         if rain_hours:
-            # Группируем подряд идущие часы дождя в диапазон
-            rain_ranges = []
-            start = end = None
-            for h in rain_hours:
-                try:
-                    if start is None:
-                        start = end = h
-                    elif end is not None and h is not None and int(h[:2]) == int(end[:2]) + 3:
-                        end = h
-                    else:
-                        rain_ranges.append((start, end))
-                        start = end = h
-                except Exception:
+            start = end = rain_hours[0]
+            for h in rain_hours[1:]:
+                prev_hour = int(end[:2])
+                curr_hour = int(h[:2])
+                if curr_hour == prev_hour + 3:
+                    end = h
+                else:
                     rain_ranges.append((start, end))
                     start = end = h
-            if start is not None and end is not None:
-                rain_ranges.append((start, end))
+            rain_ranges.append((start, end))
             # Формируем текст
             if len(rain_ranges) == 1 and rain_ranges[0][0] == rain_ranges[0][1]:
                 rain_text = f"Дождь ожидается в {rain_ranges[0][0]}"
             else:
-                ranges_str = ', '.join([f"с {r[0]} по {r[1]}" if r[0] != r[1] else f"в {r[0]}" for r in rain_ranges])
-                rain_text = f"Дождь: {ranges_str}"
+                rain_text = "Дождь:\n" + '\n'.join([f"• с {r[0]} по {r[1]}" if r[0] != r[1] else f"• в {r[0]}" for r in rain_ranges])
         else:
             rain_text = "Без дождя"
-        return f"{city}: {rain_text}, ветер {wind_avg} м/с, температура от {temp_min}°C до {temp_max}°C"
+        return f"{city}:\n{rain_text}\nВетер: {wind_avg} м/с\nТемпература: от {temp_min}°C до {temp_max}°C"
     except Exception as e:
         return f"Ошибка: {e}"
 
