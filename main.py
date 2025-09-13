@@ -407,12 +407,12 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if re.match(r'^([01]\d|2[0-3]):[0-5]\d$', time_text):
             state["send_time"] = time_text
             state["custom_time_mode"] = False
+            save_user_states()
+            update_user_job(user_id)
             await update.message.reply_text(
                 f"⏰ Уведомления по городу {state['notify_city']} будут приходить каждый день в {time_text}!",
                 reply_markup=main_keyboard
             )
-            save_user_states()
-            update_user_job(user_id)
         else:
             await update.message.reply_text("Некорректный формат времени. Введите в формате ЧЧ:ММ, например 06:45.")
         return
