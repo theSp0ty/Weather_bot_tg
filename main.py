@@ -172,4 +172,166 @@ async def get_weather_5days(city):
         translate_url = "https://libretranslate.de/translate"
         payload = {"q": city, "source": "ru", "target": "en", "format": "text"}
         resp = requests.post(translate_url, json=payload, timeout=5)
-        city_en = resp.json().get("translatedText", city) if resp.status_code == 200 :
+        if resp.status_code == 200:
+            city_en = resp.json().get("translatedText", city)
+        else:
+            city_en = city
+    except Exception:
+        city_en = city
+    url = f"https://api.openweathermap.org/data/2.5/forecast?q={city_en}&appid={OPENWEATHER_API_KEY}&units=metric&lang=ru"
+    try:
+        response = requests.get(url)
+        data = response.json()
+        if data.get('cod') != "200":
+            return f"Не удалось получить прогноз на 5 дней для {city}."
+        forecasts = []
+        for item in data['list']:
+            dt = item['dt']
+            date = datetime.utcfromtimestamp(dt).strftime('%Y-%m-%d')
+            hour = int(item['dt_txt'][11:13])
+            if 6 <= hour <= 21:
+                day_forecast = {
+                    "date": date,
+                    "temp_max": item['main']['temp_max'],
+                    "temp_min": item['main']['temp_min'],
+                    "wind_speed": item['wind']['speed'],
+                    "rain": item.get('rain', {}).get('3h', 0)
+                }
+                forecasts.append(day_forecast)
+        if not forecasts:
+            return f"Нет данных о прогнозе на световой день для {city}."
+        result = [f"Прогноз погоды на 5 дней для {city}:"]
+        for f in forecasts:
+            date = f["date"]
+            temp_max = f["temp_max"]
+            temp_min = f["temp_min"]
+            wind_speed = f["wind_speed"]
+            rain = f["rain"]
+            rain_text = f"Дождь: {rain} мм" if rain > 0 else "Без дождя"
+            result.append(f"Дата: {date}, Макс. температура: {temp_max}°C, Мин. температура: {temp_min}°C, Ветер: {wind_speed} м/с, {rain_text}")
+        return "\n".join(result)
+    except Exception as e:
+        return f"Ошибка: {e}"
+
+async def send_weather_job_sync(user_id):
+    state = user_states.get(user_id)
+    if not state:
+        return
+    notify_city = state.get("notify_city")
+    if not notify_city:
+        return
+    chat_id = state.get("chat_id")
+    if not chat_id:
+        return
+    text = await get_weather_brief(notify_city)
+    if text.startswith("Ошибка:"):
+        await send_message(chat_id, text)
+    else:
+        wish = get_wish()
+        await send_message(chat_id, f"{text}\n\n{wish}")
+
+async def send_message(chat_id, text):
+    bot = Bot(token=TELEGRAM_TOKEN)
+    try:
+        await bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML')
+    except Exception as e:
+        print(f"Ошибка при отправке сообщения: {e}")
+
+async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    user_states[user_id] = {"chat_id": chat_id}
+    save_user_states()
+    await update.message.reply_text("Добро пожаловать! Выберите действие:", reply_markup=main_keyboard)
+
+async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Помощь по боту:\n\n"
+                                      "1. Добавить город 🏙️ - добавляет город для получения прогноза погоды.\n"
+                                      "2. Удалить город 🗑️ - удаляет город из списка отслеживаемых.\n"
+                                      "3. Мои города 📋 - показывает список добавленных городов.\n"
+                                      "4. Расписание уведомлений 🕒 - показывает расписание уведомлений о погоде.\n"
+                                      "5. Показать погоду 🌦️ - показывает погоду на текущий момент.\n"
+                                      "6. Посмотреть погоду 🌍 - показывает погоду на 5 дней вперёд.\n"
+                                      "7. Установить время ⏰ - устанавливает время для ежедневных уведомлений о погоде.\n"
+                                      "8. Остановить уведомления ❌ - останавливает уведомления о погоде.\n"
+                                      "9. Помощь /help - показывает это сообщение.")
+
+async def add_city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    state = user_states.get(user_id, {})
+    timezones = state.get("timezones", {})
+    if not timezones:
+        await update.message.reply_text("Сначала установите часовой пояс командой /set_timezone")
+        return
+    keyboard = ReplyKeyboardMarkup([[KeyboardButton(city) for city in timezones.keys()]], resize_keyboard=True)
+    await update.message.reply_text("Выберите город:", reply_markup=keyboard)
+
+async def city_chosen_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    city = update.message.text
+    state = user_states.get(user_id, {})
+    timezones = state.get("timezones", {})
+    if city not in timezones:
+        await update.message.reply_text("Город не найден. Пожалуйста, выберите из предложенных вариантов.")
+        return
+    timezone = timezones[city]
+    user_states[user_id] = {"chat_id": chat_id, "notify_city": city, "timezone": timezone}
+    save_user_states()
+    await update.message.reply_text(f"Город установлен: {city}. Теперь укажите время для уведомлений в формате ЧЧ:ММ.")
+
+async def set_time_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    state = user_states.get(user_id, {})
+    if "notify_city" not in state:
+        await update.message.reply_text("Сначала добавьте город командой /add_city")
+        return
+    text = update.message.text
+    if not re.match(r"^\d{1,2}:\d{2}$", text):
+        await update.message.reply_text("Неверный формат времени. Пожалуйста, укажите время в формате ЧЧ:ММ.")
+        return
+    hour, minute = map(int, text.split(":"))
+    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+        await update.message.reply_text("Некорректное время. Часы должны быть от 0 до 23, минуты от 0 до 59.")
+        return
+    user_states[user_id]["send_time"] = text
+    save_user_states()
+    update_user_job(user_id)
+    await update.message.reply_text(f"Время уведомлений установлено на {text}.")
+
+async def stop_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    user_states.pop(user_id, None)
+    try:
+        scheduler.remove_job(f"weather_{user_id}")
+    except Exception:
+        pass
+    await update.message.reply_text("Уведомления остановлены. Если захотите снова получить прогноз погоды, просто напишите мне.")
+
+async def echo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Я вас не понимаю. Пожалуйста, воспользуйтесь командой /help для получения списка доступных команд.")
+
+def main():
+    load_user_states()
+    for user_id in list(user_states.keys()):
+        update_user_job(user_id)
+    application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    start_handler_obj = CommandHandler("start", start_handler)
+    help_handler_obj = CommandHandler("help", help_handler)
+    add_city_handler_obj = CommandHandler("add_city", add_city_handler)
+    set_time_handler_obj = CommandHandler("set_time", set_time_handler)
+    stop_handler_obj = CommandHandler("stop", stop_handler)
+    echo_handler_obj = MessageHandler(filters.TEXT & ~filters.COMMAND, echo_handler)
+    application.add_handler(start_handler_obj)
+    application.add_handler(help_handler_obj)
+    application.add_handler(add_city_handler_obj)
+    application.add_handler(set_time_handler_obj)
+    application.add_handler(stop_handler_obj)
+    application.add_handler(echo_handler_obj)
+    application.run_polling()
+
+if __name__ == "__main__":
+    main()
