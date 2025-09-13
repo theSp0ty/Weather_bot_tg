@@ -405,14 +405,19 @@ async def view_weather_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     load_user_states()
+    print(f"[Main] user_states: {user_states}")
     for user_id, state in user_states.items():
         send_time = state.get("send_time")
         timezone = state.get("timezone", "Europe/Moscow")
+        notify_city = state.get("notify_city")
+        print(f"[Main] user_id={user_id}, send_time={send_time}, notify_city={notify_city}")
         if send_time:
             hour, minute = map(int, send_time.split(":"))
             job_id = f"weather_{user_id}"
+            print(f"[Main] Добавление задачи: user_id={user_id}, job_id={job_id}, time={send_time}, city={notify_city}")
             scheduler.add_job(send_weather_job_sync, "cron", hour=hour, minute=minute, args=[user_id], id=job_id, replace_existing=True, timezone=timezone)
     scheduler.start()
+    print("[Main] Scheduler запущен")
     if TELEGRAM_TOKEN is None:
         raise ValueError("TELEGRAM_TOKEN не задан в .env")
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
