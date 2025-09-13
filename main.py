@@ -1,3 +1,22 @@
+def update_user_job(user_id):
+    state = user_states.get(user_id)
+    if not state:
+        print(f"[JobUpdate] Нет состояния для user_id={user_id}")
+        return
+    send_time = state.get("send_time")
+    notify_city = state.get("notify_city")
+    timezone = state.get("timezone", "Europe/Moscow")
+    job_id = f"weather_{user_id}"
+    if send_time and notify_city:
+        hour, minute = map(int, send_time.split(":"))
+        print(f"[JobUpdate] Обновление задачи: user_id={user_id}, job_id={job_id}, time={send_time}, city={notify_city}")
+        scheduler.add_job(send_weather_job_sync, "cron", hour=hour, minute=minute, args=[user_id], id=job_id, replace_existing=True, timezone=timezone)
+    else:
+        print(f"[JobUpdate] Не хватает данных для задачи: user_id={user_id}")
+        try:
+            scheduler.remove_job(job_id)
+        except Exception:
+            pass
 import logging
 import os
 import random
@@ -346,6 +365,7 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=main_keyboard
             )
             save_user_states()
+            update_user_job(user_id)
             return
     if state.get("custom_time_mode"):
         time_text = update.message.text
@@ -361,6 +381,7 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=main_keyboard
             )
             save_user_states()
+            update_user_job(user_id)
         else:
             await update.message.reply_text("Некорректный формат времени. Введите в формате ЧЧ:ММ, например 06:45.")
         return
