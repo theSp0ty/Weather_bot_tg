@@ -176,35 +176,15 @@ async def set_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Введите время для получения прогноза (например, 09:00):")
 
 async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id if update.effective_user else None
-    if user_id is None or update.message is None:
-        return
-    if user_id not in user_states:
-        user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
-    state = user_states[user_id]
-
-    # --- Просмотр погоды по запросу ---
-    if state.get('view_weather_mode'):
-        city_query = update.message.text if update.message and update.message.text else ""
-        city_query = city_query.strip().title()
-        if city_query:
-            weather_text = await get_weather(city_query)
-            await update.message.reply_text(weather_text, reply_markup=main_keyboard)
-            state['view_weather_mode'] = False
-            save_user_states()
-        else:
-            await update.message.reply_text(
-                "Город не найден. Введите название города или выберите из списка:",
-                reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]], resize_keyboard=True)
-            )
-        return
-
+    # --- Город/время/уведомления обработка ---
+    # 1. Добавление города
     city = update.message.text
     if city is not None:
         city = city.strip()
         city = city.title()
     else:
         city = ""
+    # Добавление города
     if state.get("add_mode"):
         state["add_mode"] = False
         cities_lower = [c.lower() for c in state["cities"]]
@@ -221,6 +201,7 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(f"⚠️ Город {city} уже есть в вашем списке.", reply_markup=main_keyboard)
         return
+    # Удаление города
     if state.get("remove_mode"):
         state["remove_mode"] = False
         if city in state["cities"]:
@@ -230,7 +211,7 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(f"Город {city} не найден в вашем списке.", reply_markup=main_keyboard)
         return
-    # --- ВЫБОР ГОРОДА ДЛЯ УВЕДОМЛЕНИЙ ---
+    # Выбор города для уведомлений
     if state.get("choose_city_mode"):
         chosen_city = update.message.text
         if chosen_city is not None:
@@ -265,7 +246,7 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=ReplyKeyboardMarkup(city_buttons, resize_keyboard=True)
             )
         return
-    # --- ОБРАБОТКА ВЫБОРА ВРЕМЕНИ ---
+    # Выбор времени для уведомлений
     if state.get("choose_time_mode"):
         time_text = update.message.text
         if time_text is not None:
@@ -289,13 +270,14 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             save_user_states()
             return
+    # Ввод своего времени
     if state.get("custom_time_mode"):
         time_text = update.message.text
         if time_text is not None:
             time_text = time_text.strip()
         else:
             time_text = ""
-        if re.match(r'^([01]\\d|2[0-3]):[0-5]\\d$', time_text):
+        if re.match(r'^([01]\d|2[0-3]):[0-5]\d$', time_text):
             state["send_time"] = time_text
             state["custom_time_mode"] = False
             await update.message.reply_text(
@@ -306,6 +288,46 @@ async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("Некорректный формат времени. Введите в формате ЧЧ:ММ, например 06:45.")
         return
+async def main():
+    async def view_weather_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user_id = update.effective_user.id if update.effective_user else None
+        if user_id is None or update.message is None:
+            return
+        if user_id not in user_states:
+            user_states[user_id] = {"cities": [], "remove_mode": False, "add_mode": False, "time_mode": False, "send_time": None}
+        state = user_states[user_id]
+        state["view_weather_mode"] = True
+        if state["cities"]:
+            await update.message.reply_text("Выберите город из списка или введите название:",
+                reply_markup=ReplyKeyboardMarkup([[KeyboardButton(c)] for c in state["cities"]], resize_keyboard=True))
+        else:
+            await update.message.reply_text("Введите название города для прогноза:")
+        save_user_states()
+
+    load_user_states()
+    for user_id, state in user_states.items():
+        send_time = state.get("send_time")
+        timezone = state.get("timezone", "Europe/Moscow")
+        if send_time:
+            hour, minute = map(int, send_time.split(":"))
+            job_id = f"weather_{user_id}"
+            scheduler.add_job(send_weather_job, "cron", hour=hour, minute=minute, args=[user_id], id=job_id, replace_existing=True, timezone=timezone)
+    scheduler.start()
+    if TELEGRAM_TOKEN is None:
+        raise ValueError("TELEGRAM_TOKEN не задан в .env")
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(CommandHandler('start', start))
+    app.add_handler(MessageHandler(filters.Regex("^Добавить город"), add_city))
+    app.add_handler(MessageHandler(filters.Regex("^Удалить город"), remove_city))
+    app.add_handler(MessageHandler(filters.Regex("^Установить время"), set_time))
+    app.add_handler(MessageHandler(filters.Regex("^Показать погоду"), weather))
+    app.add_handler(MessageHandler(filters.Regex("^Посмотреть погоду"), view_weather_cmd))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, city_handler))
+    app.run_polling()
+
+if __name__ == '__main__':
+    import asyncio
+    asyncio.run(main())
 
 async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if update.effective_user else None
@@ -409,7 +431,7 @@ async def send_weather_job(user_id):
     except Exception:
         pass
 
-def main():
+async def main():
     async def view_weather_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id if update.effective_user else None
         if user_id is None or update.message is None:
@@ -425,30 +447,27 @@ def main():
             await update.message.reply_text("Введите название города для прогноза:")
         save_user_states()
 
-    async def run():
-        load_user_states()
-        for user_id, state in user_states.items():
-            send_time = state.get("send_time")
-            timezone = state.get("timezone", "Europe/Moscow")
-            if send_time:
-                hour, minute = map(int, send_time.split(":"))
-                job_id = f"weather_{user_id}"
-                scheduler.add_job(send_weather_job, "cron", hour=hour, minute=minute, args=[user_id], id=job_id, replace_existing=True, timezone=timezone)
-        scheduler.start()
-        if TELEGRAM_TOKEN is None:
-            raise ValueError("TELEGRAM_TOKEN не задан в .env")
-        app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-        app.add_handler(CommandHandler('start', start))
-        app.add_handler(MessageHandler(filters.Regex("^Добавить город"), add_city))
-        app.add_handler(MessageHandler(filters.Regex("^Удалить город"), remove_city))
-        app.add_handler(MessageHandler(filters.Regex("^Установить время"), set_time))
-        app.add_handler(MessageHandler(filters.Regex("^Показать погоду"), weather))
-        app.add_handler(MessageHandler(filters.Regex("^Посмотреть погоду"), view_weather_cmd))
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, city_handler))
-        await app.run_polling()
-
-    import asyncio
-    asyncio.run(run())
+    load_user_states()
+    for user_id, state in user_states.items():
+        send_time = state.get("send_time")
+        timezone = state.get("timezone", "Europe/Moscow")
+        if send_time:
+            hour, minute = map(int, send_time.split(":"))
+            job_id = f"weather_{user_id}"
+            scheduler.add_job(send_weather_job, "cron", hour=hour, minute=minute, args=[user_id], id=job_id, replace_existing=True, timezone=timezone)
+    scheduler.start()
+    if TELEGRAM_TOKEN is None:
+        raise ValueError("TELEGRAM_TOKEN не задан в .env")
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(CommandHandler('start', start))
+    app.add_handler(MessageHandler(filters.Regex("^Добавить город"), add_city))
+    app.add_handler(MessageHandler(filters.Regex("^Удалить город"), remove_city))
+    app.add_handler(MessageHandler(filters.Regex("^Установить время"), set_time))
+    app.add_handler(MessageHandler(filters.Regex("^Показать погоду"), weather))
+    app.add_handler(MessageHandler(filters.Regex("^Посмотреть погоду"), view_weather_cmd))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, city_handler))
+    await app.run_polling()
 
 if __name__ == '__main__':
-    main()
+    import asyncio
+    asyncio.run(main())
